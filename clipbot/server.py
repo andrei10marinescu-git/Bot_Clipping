@@ -93,6 +93,15 @@ async def lifespan(_app):
 app = FastAPI(title="ClipBot", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def _revalidate_ui(request, call_next):
+    # Browsers must re-check app.js / index.html after an update, otherwise new buttons stay invisible.
+    resp = await call_next(request)
+    if not request.url.path.startswith("/media"):
+        resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
+
+
 class ProcessReq(BaseModel):
     streamer: str
     url: str

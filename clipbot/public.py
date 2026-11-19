@@ -16,6 +16,14 @@ PUBLIC_FIELDS = ("id", "streamer", "platform", "source_kind", "source_url", "sou
 app = FastAPI(title="ClipBot – galerie", docs_url=None, redoc_url=None, openapi_url=None)
 
 
+@app.middleware("http")
+async def _revalidate_ui(request, call_next):
+    resp = await call_next(request)
+    if not request.url.path.startswith("/media"):
+        resp.headers.setdefault("Cache-Control", "no-cache")
+    return resp
+
+
 @app.get("/api/streamers")
 def streamers():
     counts = db.clip_counts()

@@ -94,6 +94,7 @@ function renderNav() {
   }).join("");
   $("#sysInfo").innerHTML = w.device
     ? `Transcriere: <b>${esc(w.model)}</b> pe <b>${w.device === "cuda" ? "GPU" : "CPU"}</b>`
+      + (w.model_ro ? `<br>Română: <b>${esc(w.model_ro)}</b>` : "")
     : "Se încarcă modelul de transcriere…";
 }
 
