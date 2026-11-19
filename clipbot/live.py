@@ -18,6 +18,11 @@ from .jobs import logger, manager
 
 SEGMENT_S = 6
 BUFFER_S = 8 * 60
+# ffmpeg can hang without exiting after a network drop; restart it when no new segment arrives for this long.
+STALL_S = 60
+# A live moment is clipped once no stronger peak followed it for this long (or after the max wait).
+BURST_SETTLE_S = 30
+BURST_MAX_WAIT_S = 70
 HOP = analysis.HOP
 CHAT_REACTION_S = 3.0
 
@@ -145,6 +150,7 @@ class LiveMonitor(threading.Thread):
         self.threshold = 0.0
         self._score_hist: deque = deque(maxlen=int(1800 / HOP))
         self._settled_upto = 0
+        self._pending: dict | None = None
 
     # chat ---------------------------------------------------------------
     def chat_sink(self, wall: float, text: str) -> None:
@@ -224,6 +230,7 @@ class LiveMonitor(threading.Thread):
         self.audio = np.zeros(0, np.float32)
         self._score_hist.clear()
         self._settled_upto = 0
+        self._pending = None
         self.last_clip_peak = -1e9
         self.chat_offset = None
         with self._chat_lock:
@@ -238,7 +245,7 @@ class LiveMonitor(threading.Thread):
                 list_path = self._start_ffmpeg()
                 self.status = "înregistrează"
                 seen = 0
-                last_tick = time.time()
+                last_tick = last_new = time.time()
                 resumed = False
                 while not self.stop_evt.is_set():
                     if time.time() - last_tick > 30:
@@ -248,6 +255,8 @@ class LiveMonitor(threading.Thread):
                     last_tick = time.time()
                     if list_path.exists():
                         lines = list_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+                        if len(lines) > seen:
+                            last_new = time.time()
                         for idx in range(seen, len(lines)):
                             parts = lines[idx].strip().split(",")
                             if len(parts) < 3:
@@ -265,6 +274,11 @@ class LiveMonitor(threading.Thread):
                         seen = len(lines)
                     if self.proc.poll() is not None:
                         break
+                    if time.time() - last_new > STALL_S:
+                        logger.warning("%s/%s: no new video for %ds – restarting recorder",
+                                       self.streamer_id, self.platform, STALL_S)
+                        resumed = True
+                        break
                     self.stop_evt.wait(1.0)
                 if self.stop_evt.is_set():
                     break
@@ -278,8 +292,16 @@ class LiveMonitor(threading.Thread):
                 logger.info("recorder for %s/%s exited: %s", self.streamer_id, self.platform, err)
                 self.status = "reconectare…"
                 st = get_streamer(self.streamer_id) or {}
-                fresh = (sources.kick_live(st.get("kick", "")) if self.platform == "kick"
-                         else sources.yt_live(st.get("youtube", "")))
+                fresh = None
+                # A network drop looks like "not live" for a while; retry before giving up on the stream.
+                for attempt in range(4):
+                    try:
+                        fresh = (sources.kick_live(st.get("kick", "")) if self.platform == "kick"
+                                 else sources.yt_live(st.get("youtube", "")))
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("%s/%s reconnect: %s", self.streamer_id, self.platform, e)
+                    if fresh or self.stop_evt.wait(20 if attempt < 3 else 0):
+                        break
                 if not fresh:
                     self.status = "live terminat"
                     break
@@ -359,20 +381,36 @@ class LiveMonitor(threading.Thread):
             threshold = floor * 1.4
         self.threshold = threshold
         peak = (a0 + i) * HOP
-        if val < threshold or peak - self.last_clip_peak < cfg["live_cooldown_seconds"]:
+        if val >= threshold and peak - self.last_clip_peak >= cfg["live_cooldown_seconds"]:
+            p = self._pending
+            if p is None or val > p["val"]:
+                self._pending = {"peak": peak, "val": val, "reasons": analysis.explain(signals, i * HOP),
+                                 "seen": p["seen"] if p else self.timeline}
+        p = self._pending
+        # Wait until the burst is over, so the clip lands on its strongest moment instead of the first spike.
+        if p is None or (self.timeline - p["peak"] < BURST_SETTLE_S and self.timeline - p["seen"] < BURST_MAX_WAIT_S):
             return
+        self._pending = None
         now = time.time()
         while self.clip_walls and self.clip_walls[0] < now - 3600:
             self.clip_walls.popleft()
         if len(self.clip_walls) >= cfg["live_max_clips_per_hour"]:
             return
-        self.last_clip_peak = peak
+        self.last_clip_peak = p["peak"]
         self.clip_walls.append(now)
-        self._extract(peak, val, analysis.explain(signals, i * HOP))
+        self._extract(p["peak"], p["val"], p["reasons"], wall=now)
 
-    def _extract(self, peak: float, val: float, reasons: list[str]) -> None:
-        s, e = max(0.0, peak - 38), min(self.timeline, peak + 15)
-        r_end = analysis.reaction_end(self.audio, peak, HOP, max_after=min(14.0, e - peak))
+    def _release_slot(self, wall: float) -> None:
+        """A skipped moment must not use up one of the clips allowed per hour."""
+        try:
+            self.clip_walls.remove(wall)
+        except ValueError:
+            pass
+
+    def _extract(self, peak: float, val: float, reasons: list[str], wall: float | None = None) -> None:
+        max_len = float(settings()["max_clip_seconds"])
+        s, e = max(0.0, peak - max(38.0, max_len - 4)), min(self.timeline, peak + 16)
+        r_end = analysis.reaction_end(self.audio, peak, HOP, max_after=min(16.0, e - peak))
         segs = [g for g in self.segments if g["t1"] > s and g["t0"] < e]
         if not segs:
             return
@@ -403,13 +441,15 @@ class LiveMonitor(threading.Thread):
         manager.submit(
             "live", self.streamer_id, f"{st['name']} LIVE ({self.platform}) – moment la {int(peak)}s",
             process_live_clip, self.streamer_id, str(raw), segs[0]["t0"], peak, s, e, val, reasons, src, r_end,
+            on_skip=(lambda: self._release_slot(wall)) if wall is not None else None,
             lane="live", priority=1,
         )
         logger.info("live clip queued for %s at %.1fs (score %.2f)", self.streamer_id, peak, val)
 
 
 def process_live_clip(job, streamer_id: str, raw: str, raw_offset: float, peak: float, s: float, e: float,
-                      sig: float, reasons: list[str], src: dict, react_end: float | None = None) -> dict:
+                      sig: float, reasons: list[str], src: dict, react_end: float | None = None,
+                      on_skip=None) -> dict:
     from . import pipeline
 
     st = get_streamer(streamer_id)
@@ -427,6 +467,14 @@ def process_live_clip(job, streamer_id: str, raw: str, raw_offset: float, peak: 
         spoken = [w for w in words if start <= w["start"] < end]
         if len(spoken) < 4 and sig < 5:
             job.log("Moment fără vorbire (muzică/cutscene) – sărit.")
+            if on_skip:
+                on_skip()
+            return {"clip": None, "skipped": True}
+        foreign = analysis.foreign_share(spoken, lang)
+        if foreign >= 0.65 and sig < 6.5:
+            job.log(f"Vorbesc mai ales personajele din joc/video (~{foreign:.0%} engleză), nu {st['name']} – sărit.")
+            if on_skip:
+                on_skip()
             return {"clip": None, "skipped": True}
         t_score, t_reasons = analysis.text_score(spoken, lang or tr["language"])
         if src.get("stream_offset") is not None:

@@ -1,5 +1,6 @@
 """VOD pipeline: analyse a YouTube video / Kick VOD, pick the best moments and render clips."""
 
+import os
 import re
 import shutil
 import subprocess
@@ -10,8 +11,8 @@ import yt_dlp
 from yt_dlp.utils import download_range_func
 
 from . import align, analysis, db, render, sources, titles, transcribe
-from .config import CLIPS_DIR, FFMPEG, ROOT, WORK_DIR, get_streamer, settings
-from .jobs import Cancelled, manager
+from .config import CLIPS_DIR, FFMPEG, ROOT, SOURCES_DIR, WORK_DIR, get_streamer, settings
+from .jobs import Cancelled, logger, manager
 
 HOP = analysis.HOP
 
@@ -191,6 +192,9 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
     )
     reasons = list(dict.fromkeys(cand.get("reasons", [])))
     fx = res["effects"]
+    kept = keep_source(raw, st["id"], clip_id)
+    if kept:
+        fx.update(source_file=kept, source_offset=round(raw_offset, 3))
     if fx.get("punches"):
         reasons.append("🎬 Efecte: zoom" + (" + shake" if fx.get("shake") is not None else "")
                        + (" + flash" if fx.get("flash") is not None else ""))
@@ -285,7 +289,7 @@ def process_vod(job, streamer_id: str, url: str, max_clips: int | None = None, a
         for i, p in enumerate(peaks):
             job.check()
             job.set_progress(0.38 + 0.32 * i / max(1, len(peaks)), f"Transcriu momentul {i + 1}/{len(peaks)} ({fmt_t(p)})…")
-            w0, w1 = max(0.0, p - 36), min(real_dur, p + 20)
+            w0, w1 = max(0.0, p - max(36.0, cfg["max_clip_seconds"] - 4)), min(real_dur, p + 20)
             audio = transcribe.load_audio(str(audio_path), w0, w1 - w0)
             tr = transcribe.transcribe(audio, language=lang, offset=w0)
             r_end = analysis.reaction_end(db_series, p)
@@ -294,6 +298,10 @@ def process_vod(job, streamer_id: str, url: str, max_clips: int | None = None, a
             words = [w for w in tr["words"] if s - 1.0 <= w["start"] < e + 1.0]
             t_score, t_reasons = analysis.text_score([w for w in words if s <= w["start"] < e], lang or tr["language"])
             q, q_reasons = analysis.clip_quality(score, tr["words"], s, e, p)
+            foreign = analysis.foreign_share([w for w in words if s <= w["start"] < e], lang)
+            if foreign > 0.35:
+                q -= 4.0 * (foreign - 0.35)
+                q_reasons = q_reasons + ["🎮 Vorbesc mai ales personajele din joc/video"]
             sig = float(score[min(int(p / HOP), n - 1)])
             cands.append({
                 "peak": p, "start": s, "end": e, "words": words, "language": lang or tr["language"],
@@ -403,7 +411,117 @@ def _rel_words(clip: dict) -> list[dict]:
     return [{"start": w["start"], "end": w["end"], "word": w["word"]} for w in clip.get("words") or []]
 
 
-def rerender_vod_clip(job, clip: dict) -> dict:
+# --------------------------------------------------------------------------- kept sources + title editing
+
+def keep_source(raw: Path, streamer_id: str, clip_id: str) -> str | None:
+    """Keep the raw footage of a clip (moved out of the temp folders) so it can be re-rendered later."""
+    if float(settings().get("keep_sources_days", 14)) <= 0 or not Path(raw).exists():
+        return None
+    dst = SOURCES_DIR / streamer_id / f"{clip_id}{Path(raw).suffix}"
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(raw), dst)
+    except OSError as e:
+        logger.warning("could not keep source of %s: %s", clip_id, e)
+        return None
+    return f"{streamer_id}/{dst.name}"
+
+
+def source_path(clip: dict) -> Path | None:
+    rel = (clip.get("effects") or {}).get("source_file")
+    p = SOURCES_DIR / rel if rel else None
+    return p if p and p.exists() else None
+
+
+def delete_source(clip: dict) -> None:
+    p = source_path(clip)
+    if p:
+        p.unlink(missing_ok=True)
+
+
+def cleanup_sources() -> int:
+    days = float(settings().get("keep_sources_days", 14))
+    cutoff = time.time() - max(1.0, days) * 86400
+    removed = 0
+    for p in SOURCES_DIR.glob("*/*"):
+        if p.is_file() and p.stat().st_mtime < cutoff:
+            p.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def title_editable(clip: dict) -> bool:
+    return source_path(clip) is not None or (clip.get("source_kind") != "live" and clip.get("platform") in ("youtube", "kick"))
+
+
+def _replace(src: Path, dst: Path) -> None:
+    # The clip may be streaming to a browser right now (file locked on Windows): retry for a few seconds.
+    for i in range(20):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == 19:
+                raise RuntimeError("Fișierul clipului e folosit (se redă în browser?). Oprește playerul și reîncearcă.")
+            time.sleep(0.5)
+
+
+def render_into(clip: dict, st: dict, raw: Path, raw_offset: float, hook: str, log=None) -> dict:
+    """Render the clip again from its raw footage with the same cut/words, then swap the files in place."""
+    out = CLIPS_DIR / clip["file"]
+    tmp = out.with_name(out.stem + ".new.mp4")
+    fx_old = clip.get("effects") or {}
+    layout = fx_old.get("layout") or st.get("layout") or "auto"
+    try:
+        res = render.render_clip(
+            str(raw), clip["start"] - raw_offset, clip["duration"], _rel_words(clip), tmp,
+            hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
+            crop_sides=float(st.get("crop_sides") or 0), layout=layout, language=clip.get("language"), log=log,
+        )
+        _replace(tmp, out)
+        for ext in (".srt", ".jpg"):
+            if tmp.with_suffix(ext).exists():
+                _replace(tmp.with_suffix(ext), out.with_suffix(ext))
+    finally:
+        for ext in (".mp4", ".srt", ".jpg"):
+            tmp.with_suffix(ext).unlink(missing_ok=True)
+    fx = res["effects"]
+    for k in ("source_file", "source_offset"):
+        if k in fx_old:
+            fx[k] = fx_old[k]
+    return dict(clip, title=hook, effects=fx, thumb=f"{st['id']}/{out.with_suffix('.jpg').name}",
+                srt=f"{st['id']}/{out.with_suffix('.srt').name}",
+                words=[{k: w[k] for k in ("start", "end", "word", "level", "kind")} for w in res["words"]])
+
+
+def retitle_clip(job, clip_id: str, title: str) -> dict:
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise RuntimeError("Clipul nu mai există")
+    st = get_streamer(clip["streamer"]) or {"id": clip["streamer"], "name": clip["streamer"]}
+    title = analysis.censor(" ".join(title.split()))[:90]
+    raw = source_path(clip)
+    if raw:
+        job.set_progress(0.1, "Refac clipul cu titlul nou…")
+        clip = render_into(clip, st, raw, float((clip.get("effects") or {}).get("source_offset") or 0), title,
+                           log=job.log)
+        db.add_clip(clip)
+    elif clip.get("source_kind") != "live":
+        job.set_progress(0.05, "Sursa nu mai e pe PC – descarc din nou bucata din video…")
+        clip = rerender_vod_clip(job, clip, hook=title)
+    else:
+        raise RuntimeError("Clip live mai vechi: sursa lui nu a fost păstrată, titlul din video nu se mai poate schimba.")
+    job.log(f"Titlu nou în video: {title}")
+    return {"clip": clip["id"]}
+
+
+def submit_retitle(clip_id: str, title: str):
+    clip = db.get_clip(clip_id) or {}
+    return manager.submit("edit", clip.get("streamer", "?"), f"Titlu nou: {title[:50]}", retitle_clip, clip_id, title,
+                          lane="edit", key=f"retitle:{clip_id}", priority=0)
+
+
+def rerender_vod_clip(job, clip: dict, hook: str | None = None) -> dict:
     """Re-download the source section of a VOD clip and render it again with the current editor."""
     st = get_streamer(clip["streamer"])
     if not st:
@@ -419,19 +537,14 @@ def rerender_vod_clip(job, clip: dict) -> dict:
     try:
         lo, hi = max(0.0, clip["start"] - 1.0), clip["end"] + 1.0
         raw = download_section(job, src, lo, hi, work, "raw")
-        rel = _rel_words(clip)
-        lang = clip.get("language")
-        peak = ((clip.get("effects") or {}).get("peak") or clip["duration"] / 2)
-        hook = titles.make_title(rel, peak, lang, st["name"], clip.get("source_title") or "", clip.get("reasons"),
-                                 log=job.log)
-        out = CLIPS_DIR / clip["file"]
-        res = render.render_clip(
-            str(raw), clip["start"] - lo, clip["duration"], rel, out,
-            hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
-            crop_sides=float(st.get("crop_sides") or 0), layout=st.get("layout") or "auto", language=lang, log=job.log,
-        )
-        clip = dict(clip, title=hook, effects=res["effects"], thumb=f"{st['id']}/{Path(res['thumb']).name}",
-                    words=[{k: w[k] for k in ("start", "end", "word", "level", "kind")} for w in res["words"]])
+        if hook is None:
+            peak = ((clip.get("effects") or {}).get("peak") or clip["duration"] / 2)
+            hook = titles.make_title(_rel_words(clip), peak, clip.get("language"), st["name"],
+                                     clip.get("source_title") or "", clip.get("reasons"), log=job.log)
+        clip = render_into(clip, st, raw, lo, hook, log=job.log)
+        kept = keep_source(raw, st["id"], clip["id"])
+        if kept:
+            clip["effects"].update(source_file=kept, source_offset=round(lo, 3))
         db.add_clip(clip)
         return clip
     finally:

@@ -2,7 +2,7 @@
   "settings": {
     "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",
-    "max_clip_seconds": 40,
+    "max_clip_seconds": 50,
     "min_clip_seconds": 12,
     "clips_per_video": 4,
     "clips_per_stream": 8,

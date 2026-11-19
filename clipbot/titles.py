@@ -141,29 +141,35 @@ def ai_title(text: str, streamer: str, lang: str | None, source_title: str = "",
     language = "Romanian (with correct diacritics)" if lang == "ro" else "English"
     user = (f"Streamer: {streamer}\nStream / video title (context only): {source_title or '-'}\n"
             f"Write the titles in: {language}\n\nClip transcript:\n{text[:2000]}")
+    try:
+        t0 = time.time()
+        data = _ask(SYSTEM, user, max_tokens=200, temperature=0.6 if lang == "ro" else 0.75)
+        if data is None:
+            return None
+        options = data.get("titles") or []
+        title = _pick(options if isinstance(options, list) else [options], streamer, text)
+        if log and title:
+            log(f"Titlu AI ({time.time() - t0:.1f}s): {title}  (variante: {' | '.join(map(str, options))[:200]})")
+        return title
+    except Exception as e:  # noqa: BLE001 - never block a clip because of the title
+        logger.warning("ai title failed: %s", e)
+        return None
+
+
+def _ask(system: str, user: str, max_tokens: int, temperature: float) -> dict | None:
     body = {
-        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}],
-        "temperature": 0.6 if lang == "ro" else 0.75, "top_p": 0.9, "max_tokens": 200,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "temperature": temperature, "top_p": 0.9, "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
     }
     with _lock:
         if not _ensure_server():
             return None
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions",
-                                         data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-            t0 = time.time()
-            with urllib.request.urlopen(req, timeout=180) as r:
-                content = json.loads(r.read())["choices"][0]["message"]["content"]
-            data = json.loads(content[content.find("{"): content.rfind("}") + 1])
-            options = data.get("titles") or []
-            title = _pick(options if isinstance(options, list) else [options], streamer, text)
-            if log and title:
-                log(f"Titlu AI ({time.time() - t0:.1f}s): {title}  (variante: {' | '.join(map(str, options))[:200]})")
-            return title
-        except Exception as e:  # noqa: BLE001 - never block a clip because of the title
-            logger.warning("ai title failed: %s", e)
-            return None
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions",
+                                     data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            content = json.loads(r.read())["choices"][0]["message"]["content"]
+    return json.loads(content[content.find("{"): content.rfind("}") + 1])
 
 
 def make_title(words: list[dict], peak_rel: float, lang: str | None, streamer: str, source_title: str = "",

@@ -95,6 +95,22 @@
     </div>
   </div>
 
+  <div class="modal" id="titleModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>✎ Schimbă titlul din video</h3>
+        <button class="btn ghost sm" data-close="titleModal">✕</button>
+      </div>
+      <form id="titleForm" class="form-grid">
+        <label style="grid-column: 1 / -1">Titlu (apare sus în video, pe toată durata clipului)<input name="title" minlength="2" maxlength="90" required></label>
+        <p class="hint">Clipul se face din nou cu titlul nou (~30 s). Tăietura, subtitrările și efectele rămân la fel.</p>
+      </form>
+      <div class="modal-foot">
+        <button class="btn" id="saveTitle">Salvează și refă clipul</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="shareModal">
     <div class="modal-box">
       <div class="modal-head">

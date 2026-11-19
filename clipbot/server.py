@@ -16,7 +16,7 @@ from .live import get_live_manager
 from .share import share_manager
 
 SETTING_LIMITS = {
-    "max_clip_seconds": (10, 40),
+    "max_clip_seconds": (10, 50),
     "min_clip_seconds": (5, 30),
     "clips_per_video": (1, 15),
     "clips_per_stream": (1, 30),
@@ -36,8 +36,14 @@ BOOL_SETTINGS = ("auto_scan", "auto_live")
 
 def _scheduler() -> None:
     last_scan = time.time()
+    last_cleanup = 0.0
     while True:
         try:
+            if time.time() - last_cleanup > 3600:
+                last_cleanup = time.time()
+                removed = pipeline.cleanup_sources()
+                if removed:
+                    logger.info("removed %d old clip sources", removed)
             cfg = load_config()
             s = cfg["settings"]
             if s.get("auto_scan") and time.time() - last_scan >= float(s["scan_interval_minutes"]) * 60:
@@ -58,6 +64,8 @@ def _scheduler() -> None:
 def _preload_model() -> None:
     try:
         transcribe.get_model()
+        if any(s.get("language") == "ro" for s in load_config()["streamers"]):
+            transcribe.get_model("ro")
     except Exception:  # noqa: BLE001
         logger.exception("whisper preload failed")
 
@@ -100,6 +108,10 @@ class ShareReq(BaseModel):
     internet: bool | None = None
 
 
+class TitleReq(BaseModel):
+    title: str
+
+
 class StreamerReq(BaseModel):
     id: str | None = None
     name: str
@@ -130,7 +142,22 @@ def api_clips(streamer: str | None = None, limit: int = 600):
     for c in out:
         f = CLIPS_DIR / (c.get("file") or "_")
         c["v"] = int(f.stat().st_mtime) if f.exists() else 0
+        c["title_editable"] = pipeline.title_editable(c)
     return out
+
+
+@app.post("/api/clips/{clip_id}/title")
+def api_clip_title(clip_id: str, req: TitleReq):
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(404, "Clipul nu există")
+    title = " ".join(req.title.split())
+    if not 2 <= len(title) <= 90:
+        raise HTTPException(400, "Titlul trebuie să aibă între 2 și 90 de caractere.")
+    if not pipeline.title_editable(clip):
+        raise HTTPException(400, "Clip live mai vechi: sursa lui nu a fost păstrată, titlul din video nu se mai poate schimba.")
+    job = pipeline.submit_retitle(clip_id, title)
+    return {"job": job.id}
 
 
 @app.get("/api/share")
@@ -154,6 +181,7 @@ def api_delete_clip(clip_id: str):
     for key in ("file", "thumb", "srt"):
         if clip.get(key):
             (CLIPS_DIR / clip[key]).unlink(missing_ok=True)
+    pipeline.delete_source(clip)
     db.delete_clip(clip_id)
     return {"ok": True}
 

@@ -2,7 +2,7 @@
 
 Bot local care urmărește **IShowSpeed, Kai Cenat, iRaphahell, Adin Ross, Jynxzi și Dylan Page** (YouTube; Kick unde au canal),
 găsește singur momentele cele mai interesante (din VOD-uri/video-uri **și din live-uri în timp real**)
-și le transformă în clipuri verticale 9:16 (TikTok / Shorts / Reels) de **maximum 40 de secunde**,
+și le transformă în clipuri verticale 9:16 (TikTok / Shorts / Reels) de **maximum 50 de secunde**,
 cu **transcript**, subtitrări sincronizate pe buze, accent pe cuvintele importante și efecte.
 
 ## Pornire
@@ -21,6 +21,11 @@ cu **transcript**, subtitrări sincronizate pe buze, accent pe cuvintele importa
 
 Fiecare clip are: player, **titlu** (în video, sus, pe toată durata clipului, și pe site deasupra playerului),
 motivele pentru care a fost ales, scor, **transcript complet**, link la sursă (la secunda exactă), descărcare **MP4** și **SRT**.
+
+**✎ Titlu** (la fiecare clip) – schimbi titlul care apare în video; clipul se face din nou în ~10–30 s, cu aceeași
+tăietură, subtitrări și efecte. Pentru asta botul păstrează sursa fiecărui clip nou în `data\sources\` timp de
+14 zile (`keep_sources_days` în `config.json`). La clipurile din VOD-uri fără sursă păstrată, bucata se descarcă din nou;
+clipurile din live făcute înainte de această funcție nu mai pot fi editate.
 
 ## 🌐 Arată clipurile altora (galerie publică)
 
@@ -44,9 +49,24 @@ Butonul **🌐 Partajează** (sus în panou) pornește o **galerie separată, do
 | 🗣️ Transcript | cuvinte de reacție (EN + RO), exclamații, râsete, ritm de vorbire |
 
 Pentru fiecare vârf candidat, botul transcrie ~1 minut în jur (Whisper `large-v3-turbo` pe GPU) și construiește clipul
-ca **setup → reacție**: începe la o propoziție de dinainte și se termină imediat după ce reacția se calmează (≤ 40 s).
+ca **setup → reacție**: începe la începutul schimbului de replici care duce la moment (după ultima pauză clară, până la
+~26 s înainte) și se termină imediat după ce reacția se calmează (≤ 50 s). Tăieturile cad mereu pe margini de propoziție.
 Candidații se notează pe tot clipul (hype susținut, densitatea vorbirii, unde cade momentul), iar cei slabi
 sunt aruncați – mai bine 2 clipuri foarte bune decât 4 mediocre.
+
+**În live**, botul nu taie la primul vârf: așteaptă să se termine „valul” de reacție (până la ~70 s) și ia vârful cel mai
+puternic din el. La streamerii pe română, momentele în care vorbesc aproape doar personajele din joc/video (în engleză,
+ex. cutscene-uri GTA) sunt sărite în live și depunctate la VOD-uri; un moment sărit nu consumă din limita de clipuri pe oră.
+Dacă înregistrarea live rămâne blocată (ex. după o cădere de internet), botul o repornește singur după 60 s fără date noi.
+
+### Transcript în română
+
+Pentru streamerii cu limba **RO** (iRaphahell) botul folosește [eek/whisper-turbo-ro-en](https://huggingface.co/eek/whisper-turbo-ro-en)
+(MIT): Whisper turbo antrenat pe româna vorbită + română amestecată cu engleză. Pe vorbire spontană greșește
+de ~2 ori mai puțin decât Whisper standard și pune diacriticele corect. Formele cu cratimă (live-ul, n-a, de-aia) se
+scriu legat. Modelul e în `models\whisper-ro\` (~820 MB); dacă lipsește, se folosește Whisper standard.
+Pe Hugging Face modelul cere un cont gratuit: pe pagina lui apeși *Agree*, îți faci un token de citire și rulezi
+`$env:HF_TOKEN="hf_..."; powershell -ExecutionPolicy Bypass -File setup.ps1` (tokenul nu se salvează).
 
 ### Sincronizare (lipsync)
 
@@ -93,11 +113,13 @@ iar insultele rasiale se maschează complet (*n\*\*\*a*). Sunetul rămâne origi
 | Codul botului | `clipbot\`, interfața în `web\`, pornire `run.py` / `start.bat` |
 | Setări + streameri | `config.json` (local, se editează și din interfață: ⚙ Setări, ✎ la streamer); valorile inițiale în `config.default.json` |
 | Clipurile finale (.mp4, .srt, .jpg) | `data\clips\<streamer>\` |
+| Sursa fiecărui clip (pentru ✎ Titlu, se șterge singură după 14 zile) | `data\sources\<streamer>\` |
 | Baza de date cu clipuri | `data\clips.db` |
 | Log-uri | `data\logs\clipbot.log` |
 | Fișiere temporare / buffer live | `data\work\`, `data\live\` (se curăță singure) |
 | Python + pachete | `.venv\` |
 | Model Whisper (~1.6 GB) | `models\whisper\` |
+| Model Whisper pentru română – eek/whisper-turbo-ro-en (~820 MB, licență MIT) | `models\whisper-ro\` |
 | Model sincronizare cuvinte (~630 MB) | `models\aligner\` |
 | Detector de fețe YuNet (~230 KB) | `models\face\` |
 | Model AI pentru titluri – Qwen3-4B-Instruct Q4 (~2.5 GB, licență Apache-2.0) | `models\llm\` |
@@ -139,7 +161,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 `setup.ps1` pune totul în folderul proiectului: pachetele Python în `.venv\` (~3 GB, inclusiv librăriile CUDA),
 deno, detectorul de fețe, modelul de sincronizare (~630 MB), llama.cpp + modelul AI pentru titluri (~2.5 GB) și fonturile.
 La **prima pornire** se descarcă și modelul Whisper (~1.6 GB), deci prima pornire durează câteva minute.
-Spațiu necesar: ~10.5 GB + clipurile; recomandat 16 GB RAM.
+Spațiu necesar: ~11.5 GB + clipurile (+ sursele lor păstrate 14 zile); recomandat 16 GB RAM.
 
 Un PC nou pornește cu **totul oprit** (fără partajare, fără auto-scanare, fără înregistrare live) – setările vin din
 `config.default.json` și se pot porni din interfață. `config.json` (setările tale locale) nu e în repo.
@@ -150,7 +172,7 @@ Un PC nou pornește cu **totul oprit** (fără partajare, fără auto-scanare, f
 
 - **Sensibilitate live** (implicit 1.0): mai mare = mai multe clipuri din live, mai mică = doar momentele mari.
 - **Clipuri / video** și **Clipuri / stream lung**: câte clipuri scoate dintr-un VOD.
-- **Durată maximă clip**: maximum 40 s, nu se poate depăși.
+- **Durată maximă clip**: implicit și maximum 50 s.
 - La fiecare streamer (✎): limba (EN/RO, pentru transcriere mai bună), culoarea, **încadrarea 9:16**
   (auto / split / crop / blur) și „decupare laterală” (0–0.3, doar pentru blur). La YouTube poți lipi
   @handle-ul, link-ul canalului sau chiar link-ul unui video – botul găsește singur canalul.

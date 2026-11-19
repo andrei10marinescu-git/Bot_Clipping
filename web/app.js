@@ -11,7 +11,7 @@ const cardEls = new Map();
 const SETTINGS_FIELDS = [
   ["clips_per_video", "Clipuri / video normal", 1],
   ["clips_per_stream", "Clipuri / stream lung (VOD)", 1],
-  ["max_clip_seconds", "Durată maximă clip (s, max 40)", 1],
+  ["max_clip_seconds", "Durată maximă clip (s, max 50)", 1],
   ["min_clip_seconds", "Durată minimă clip (s)", 1],
   ["live_sensitivity", "Sensibilitate live (0.3 – 5)", 0.1],
   ["live_cooldown_seconds", "Pauză între clipuri live (s)", 5],
@@ -208,6 +208,7 @@ function clipCard(c) {
         <a class="btn sm" href="/media/${esc(c.file)}${v}" download="${esc(fileName(c, "mp4"))}">⬇ MP4</a>
         <a class="btn sm ghost" href="/media/${esc(c.srt)}${v}" download="${esc(fileName(c, "srt"))}">⬇ SRT</a>
         <button class="btn sm ghost" data-copy>📋 Copiază text</button>
+        <button class="btn sm ghost" data-retitle ${c.title_editable ? 'title="Schimbă titlul care apare în video"' : 'disabled title="Clip live mai vechi: sursa nu a fost păstrată"'}>✎ Titlu</button>
         <button class="btn sm danger ghost" data-del title="Șterge clipul">🗑</button>
       </div>
     </div>`;
@@ -215,6 +216,7 @@ function clipCard(c) {
     await navigator.clipboard.writeText(`${c.title}\n\n${c.transcript}`);
     toast("Transcript copiat");
   };
+  $("[data-retitle]", el).onclick = () => showRetitle(c);
   $("[data-del]", el).onclick = async () => {
     if (!confirm("Ștergi clipul definitiv?")) return;
     await api(`/api/clips/${encodeURIComponent(c.id)}`, { method: "DELETE" });
@@ -319,13 +321,38 @@ async function showVideos(sid) {
   }
 }
 
+// ------------------------------------------------------------------ title editing
+
+let retitleId = null;
+function showRetitle(c) {
+  retitleId = c.id;
+  const input = $("#titleForm").elements.title;
+  input.value = c.title || "";
+  openModal("titleModal");
+  setTimeout(() => input.select(), 50);
+}
+async function saveRetitle() {
+  const f = $("#titleForm");
+  if (!f.reportValidity() || !retitleId) return;
+  const title = f.elements.title.value.trim();
+  const btn = $("#saveTitle");
+  btn.disabled = true;
+  try {
+    await api(`/api/clips/${encodeURIComponent(retitleId)}/title`, { method: "POST", body: { title } });
+    closeModal("titleModal");
+    toast("Refac clipul cu titlul nou – durează ~30 s (vezi Activitate)");
+    refreshState();
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; }
+}
+
 // ------------------------------------------------------------------ settings & streamers
 
 function showSettings() {
   const s = state.settings;
   $("#settingsForm").innerHTML = SETTINGS_FIELDS.map(([k, label, step]) =>
     `<label>${esc(label)}<input name="${k}" type="number" step="${step}" value="${esc(s[k])}"></label>`).join("")
-    + `<p class="hint">Sensibilitate live mai mare = mai multe clipuri (prag mai mic). Clipurile au mereu maximum 40 de secunde.</p>`;
+    + `<p class="hint">Sensibilitate live mai mare = mai multe clipuri (prag mai mic). Clipurile au mereu maximum 50 de secunde.</p>`;
   openModal("settingsModal");
 }
 
@@ -480,6 +507,8 @@ $("#deleteStreamer").onclick = async () => {
   closeModal("streamerModal");
   refreshState();
 };
+$("#saveTitle").onclick = saveRetitle;
+$("#titleForm").onsubmit = (e) => { e.preventDefault(); saveRetitle(); };
 $$(".modal").forEach((m) => m.addEventListener("click", (e) => { if (e.target === m) m.classList.remove("open"); }));
 
 (async function init() {

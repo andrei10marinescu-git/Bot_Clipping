@@ -300,6 +300,31 @@ def text_score(words: list[dict], lang: str | None) -> tuple[float, list[str]]:
     return min(4.0, s), reasons
 
 
+# Unambiguous function words, used to tell a Romanian streamer apart from English game / video characters.
+_EN_MARK = {"the", "you", "to", "and", "that", "is", "what", "we", "this", "of", "my", "your", "for", "with", "are",
+            "was", "get", "got", "gotta", "know", "just", "they", "he", "she", "it's", "i'm", "don't", "can't",
+            "there", "here", "have", "from", "want", "need", "let", "tell", "told", "did", "does", "be", "been",
+            "about", "all", "right", "but", "if", "when", "who", "why", "how", "it", "i", "me", "him", "her"}
+_RO_MARK = {"și", "si", "că", "să", "nu", "e", "este", "de", "la", "pe", "ce", "mă", "bă", "asta", "aia", "deci",
+            "gen", "dar", "cu", "un", "o", "îl", "le", "lui", "mai", "tot", "acum", "aici", "unde", "cum", "eu",
+            "tu", "el", "ea", "noi", "voi", "ei", "sunt", "era", "fost", "doar", "care", "pentru", "dacă", "frate",
+            "hai", "păi", "pai", "uite", "vezi", "știu", "stiu", "ăsta", "asa", "așa", "măi", "fra"}
+
+
+def foreign_share(words: list[dict], lang: str | None) -> float:
+    """Romanian streamers only: share of English speech, i.e. mostly game / video characters, not the streamer."""
+    if lang != "ro":
+        return 0.0
+    en = ro = 0
+    for w in words:
+        t = _norm(w["word"]).strip("'-")
+        if re.search(r"[ăâîșşțţ]", t) or t in _RO_MARK:
+            ro += 1
+        elif t in _EN_MARK:
+            en += 1
+    return en / (en + ro) if en + ro >= 5 else 0.0
+
+
 def _boundaries(words: list[dict]) -> tuple[list[float], list[float]]:
     """Natural cut points: sentence starts/ends and pauses."""
     starts, ends = [], []
@@ -313,14 +338,25 @@ def _boundaries(words: list[dict]) -> tuple[list[float], list[float]]:
     return starts, ends
 
 
+def _story_start(words: list[dict], earliest: float, latest: float) -> float | None:
+    """Start of the current exchange: first word after the last clear pause before the moment."""
+    best = None
+    for a, b in zip(words, words[1:]):
+        if earliest <= b["start"] <= latest and b["start"] - a["end"] >= 1.2:
+            best = b["start"]
+    return best
+
+
 def choose_bounds(words: list[dict], peak: float, lo: float, hi: float,
                   min_len: float = 12, max_len: float = 40, react_end: float | None = None) -> tuple[float, float]:
     """Clip [start, end]: setup that starts on a sentence start, payoff = the reaction, end right after it calms."""
     inside_words = [w for w in words if lo <= w["start"] <= hi]
     starts, ends = _boundaries(inside_words)
-    target_e = min(peak + 12, max(peak + 3, react_end if react_end is not None else peak + 8))
+    target_e = min(peak + 14, max(peak + 3, react_end if react_end is not None else peak + 8))
     room = max_len - (target_e - peak)
-    target_s = max(lo, peak - min(16.0, room - 2))
+    # Prefer the whole exchange that leads to the moment (up to ~26 s of setup), else ~16 s of context.
+    story = _story_start(inside_words, max(lo, peak - min(26.0, room - 2)), peak - 5)
+    target_s = story if story is not None else max(lo, peak - min(16.0, room - 2))
     cand_s = [s for s in starts if max(lo, peak - (max_len - 4)) <= s <= peak - 4]
     start = min(cand_s, key=lambda s: abs(s - target_s)) if cand_s else target_s
     prev_end = max((w["end"] for w in inside_words if w["end"] <= start), default=lo)

@@ -9,6 +9,7 @@ DATA_DIR = ROOT / "data"
 CLIPS_DIR = DATA_DIR / "clips"
 WORK_DIR = DATA_DIR / "work"
 LIVE_DIR = DATA_DIR / "live"
+SOURCES_DIR = DATA_DIR / "sources"  # raw source of each clip, kept so its title can be edited later
 LOG_DIR = DATA_DIR / "logs"
 MODELS_DIR = ROOT / "models"
 TOOLS_DIR = ROOT / "tools"
@@ -18,7 +19,7 @@ CONFIG_PATH = ROOT / "config.json"
 DEFAULT_CONFIG_PATH = ROOT / "config.default.json"
 DB_PATH = DATA_DIR / "clips.db"
 
-for _d in (DATA_DIR, CLIPS_DIR, WORK_DIR, LIVE_DIR, LOG_DIR, MODELS_DIR):
+for _d in (DATA_DIR, CLIPS_DIR, WORK_DIR, LIVE_DIR, SOURCES_DIR, LOG_DIR, MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # config.json is the local, editable copy (not in git); a fresh checkout starts from the safe defaults.
@@ -39,7 +40,7 @@ DENO = TOOLS_DIR / "deno.exe"
 DEFAULT_SETTINGS = {
     "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",
-    "max_clip_seconds": 40,
+    "max_clip_seconds": 50,
     "min_clip_seconds": 12,
     "clips_per_video": 4,
     "clips_per_stream": 8,
@@ -58,6 +59,7 @@ DEFAULT_SETTINGS = {
     "encoder": "auto",
     "share_lan": False,
     "ai_titles": True,
+    "keep_sources_days": 14,
     "share_internet": False,
     "public_port": 8766,
 }

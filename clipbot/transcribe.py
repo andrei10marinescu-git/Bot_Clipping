@@ -12,11 +12,15 @@ import numpy as np
 
 from .config import FFMPEG, MODELS_DIR, settings
 
-_model = None
+_models: dict = {}
 _model_info: dict = {}
 _lock = threading.Lock()
 
 SAMPLE_RATE = 16000
+# eek/whisper-turbo-ro-en (MIT): Whisper turbo fine-tuned on spoken Romanian + Romglish, used for "ro" streamers.
+RO_MODEL = MODELS_DIR / "whisper-ro" / "ctranslate2-int8"
+RO_MODEL_NAME = "eek/whisper-turbo-ro-en"
+_SPEAKER_TAG = re.compile(r"\[S\d+\]\s*")
 
 # Typical Whisper hallucinations on silence/music.
 _HALLUCINATIONS = re.compile(
@@ -53,41 +57,69 @@ def load_audio(path: str, start: float | None = None, duration: float | None = N
     return np.frombuffer(raw, np.float32).copy()
 
 
-def get_model():
-    global _model
+def ro_model_available() -> bool:
+    return (RO_MODEL / "model.bin").exists()
+
+
+def get_model(language: str | None = None):
+    key = "ro" if language == "ro" and ro_model_available() else "main"
     with _lock:
-        if _model is not None:
-            return _model
+        if key in _models:
+            return _models[key]
         _add_cuda_dlls()
         import ctranslate2
         from faster_whisper import WhisperModel
 
         cfg = settings()
-        name = cfg.get("whisper_model", "large-v3-turbo")
+        name = str(RO_MODEL) if key == "ro" else cfg.get("whisper_model", "large-v3-turbo")
+        label = RO_MODEL_NAME if key == "ro" else name
         device = cfg.get("whisper_device", "auto")
         root = str(MODELS_DIR / "whisper")
+        model, info = None, {}
         if device in ("auto", "cuda") and ctranslate2.get_cuda_device_count() > 0:
             for compute in ("int8_float16", "float16", "int8"):
                 try:
                     m = WhisperModel(name, device="cuda", compute_type=compute, download_root=root)
                     list(m.transcribe(np.zeros(SAMPLE_RATE, np.float32), language="en")[0])
-                    _model = m
-                    _model_info.update(device="cuda", compute=compute, model=name)
-                    return _model
+                    model, info = m, {"device": "cuda", "compute": compute, "model": label}
+                    break
                 except Exception:
                     continue
-        _model = WhisperModel(name, device="cpu", compute_type="int8", download_root=root)
-        _model_info.update(device="cpu", compute="int8", model=name)
-        return _model
+        if model is None:
+            model = WhisperModel(name, device="cpu", compute_type="int8", download_root=root)
+            info = {"device": "cpu", "compute": "int8", "model": label}
+        _models[key] = model
+        if key == "main":
+            _model_info.update(info)
+        else:
+            _model_info["model_ro"] = label
+        return model
 
 
 def model_info() -> dict:
-    return dict(_model_info)
+    info = dict(_model_info)
+    if ro_model_available():
+        info.setdefault("model_ro", RO_MODEL_NAME)
+    return info
+
+
+def _merge_attached(words: list[dict]) -> list[dict]:
+    """Whisper splits Romanian clitics into their own words ("live" "-ul", "n" "-a"); glue them back."""
+    out: list[dict] = []
+    for w in words:
+        tok = w["word"]
+        attach = out and ((len(tok) > 1 and tok[0] in "-‑" and tok[1].isalpha() and out[-1]["word"][-1].isalnum())
+                          or (tok in ("+", "%") and out[-1]["word"][-1].isdigit()))
+        if attach:
+            out[-1] = dict(out[-1], word=out[-1]["word"] + tok, end=max(out[-1]["end"], w["end"]))
+        else:
+            out.append(w)
+    return out
 
 
 def transcribe(audio: np.ndarray, language: str | None = None, offset: float = 0.0) -> dict:
     """Return {'language', 'segments': [...], 'words': [{'start','end','word'}]} with times shifted by offset."""
-    model = get_model()
+    model = get_model(language)
     if len(audio) < SAMPLE_RATE // 2:
         return {"language": language, "segments": [], "words": []}
     with _lock:
@@ -104,14 +136,14 @@ def transcribe(audio: np.ndarray, language: str | None = None, offset: float = 0
         segs = list(segs)
     segments, words = [], []
     for s in segs:
-        text = s.text.strip()
+        text = _SPEAKER_TAG.sub("", s.text).strip()
         if not text or _HALLUCINATIONS.search(text):
             continue
         if s.no_speech_prob > 0.7 and s.avg_logprob < -0.8:
             continue
         seg_words = []
         for w in s.words or []:
-            token = w.word.strip()
+            token = _SPEAKER_TAG.sub("", w.word).strip()
             if not token:
                 continue
             seg_words.append({
@@ -119,6 +151,7 @@ def transcribe(audio: np.ndarray, language: str | None = None, offset: float = 0
                 "end": round(max(w.end, w.start + 0.05) + offset, 3),
                 "word": token,
             })
+        seg_words = _merge_attached(seg_words)
         if not seg_words:
             continue
         segments.append({"start": seg_words[0]["start"], "end": seg_words[-1]["end"], "text": text})

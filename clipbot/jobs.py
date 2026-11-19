@@ -71,7 +71,8 @@ class Job:
 
 class JobManager:
     def __init__(self):
-        self._queues = {"live": queue.PriorityQueue(), "vod": queue.PriorityQueue(), "maint": queue.PriorityQueue()}
+        self._queues = {"live": queue.PriorityQueue(), "vod": queue.PriorityQueue(), "maint": queue.PriorityQueue(),
+                        "edit": queue.PriorityQueue()}
         self._jobs: "OrderedDict[str, Job]" = OrderedDict()
         self._lock = threading.Lock()
         self._counter = itertools.count()

@@ -71,6 +71,18 @@ if (-not (Test-Path "models\llm\Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {
     $env:HF_HOME = "$PSScriptRoot\models\huggingface"
     & .\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_download as d; d('unsloth/Qwen3-4B-Instruct-2507-GGUF', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', local_dir=r'models\llm')"
 }
+# Better Romanian transcripts (eek/whisper-turbo-ro-en, MIT). The repo is gated: it needs a free Hugging Face account
+# that accepted the terms on its page, and a read token in HF_TOKEN. The token is only used for this download.
+if (-not (Test-Path "models\whisper-ro\ctranslate2-int8\model.bin")) {
+    if ($env:HF_TOKEN) {
+        Write-Host "Descarc modelul Whisper pentru romana (~820 MB) ..."
+        $env:HF_HOME = "$PSScriptRoot\models\huggingface"
+        & .\.venv\Scripts\python.exe -c "from huggingface_hub import snapshot_download as d; d('eek/whisper-turbo-ro-en', revision='ft-w12', allow_patterns=['ctranslate2-int8/*', 'LICENSE'], local_dir=r'models\whisper-ro')"
+        Remove-Item -Recurse -Force "models\whisper-ro\.cache" -ErrorAction SilentlyContinue
+    } else {
+        Write-Host "Optional: pentru transcript mai bun in romana vezi README (modelul eek/whisper-turbo-ro-en, cere HF_TOKEN)." -ForegroundColor Yellow
+    }
+}
 foreach ($f in "Montserrat-Black.ttf", "Montserrat-ExtraBold.ttf") {
     if (-not (Test-Path "assets\fonts\$f")) {
         curl.exe -sSL -o "assets\fonts\$f" "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/$f"
