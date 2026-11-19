@@ -68,6 +68,16 @@
       "language": "en",
       "color": "#f9fbf9",
       "crop_sides": 0.04
+    },
+    {
+      "id": "dylanpage",
+      "name": "Dylan Page",
+      "youtube": "UCzPpbeK8ANcNKg5aoMB0miw",
+      "kick": "",
+      "language": "en",
+      "color": "#ff7a1a",
+      "crop_sides": 0.0,
+      "layout": "auto"
     }
   ]
 }

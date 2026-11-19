@@ -57,6 +57,20 @@ if (-not (Test-Path "tools\deno.exe")) {
     Expand-Archive -Force tools\deno.zip tools
     Remove-Item tools\deno.zip
 }
+if (-not (Test-Path "tools\llama\llama-server.exe")) {
+    Write-Host "Descarc llama.cpp (AI local pentru titluri, ruleaza pe procesor) ..."
+    $rel = Invoke-RestMethod https://api.github.com/repos/ggml-org/llama.cpp/releases/latest
+    $asset = $rel.assets | Where-Object { $_.name -match "^llama-.*-bin-win-cpu-x64\.zip$" } | Select-Object -First 1
+    New-Item -ItemType Directory -Force tools\llama | Out-Null
+    curl.exe -sSL -o tools\llama.zip $asset.browser_download_url
+    Expand-Archive -Force tools\llama.zip tools\llama
+    Remove-Item tools\llama.zip
+}
+if (-not (Test-Path "models\llm\Qwen3-4B-Instruct-2507-Q4_K_M.gguf")) {
+    Write-Host "Descarc modelul pentru titluri (Qwen3-4B, ~2.5 GB) ..."
+    $env:HF_HOME = "$PSScriptRoot\models\huggingface"
+    & .\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_download as d; d('unsloth/Qwen3-4B-Instruct-2507-GGUF', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf', local_dir=r'models\llm')"
+}
 foreach ($f in "Montserrat-Black.ttf", "Montserrat-ExtraBold.ttf") {
     if (-not (Test-Path "assets\fonts\$f")) {
         curl.exe -sSL -o "assets\fonts\$f" "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/$f"

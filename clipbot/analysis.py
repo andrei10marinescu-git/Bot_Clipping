@@ -245,10 +245,19 @@ HYPE = {
 }
 _LAUGH = re.compile(r"\b(ha(ha)+|he(he)+|lol|lmao|lmfao)\b", re.I)
 _SLURS = re.compile(r"\b(nigg(?:a|as|az|er|ers|uh)|faggots?|fags?|retards?)\b", re.I)
+# Swear words get one star (fu*k, sh*t, motherfu*ker). Romanian roots only match at a word start so
+# ordinary words that merely contain them ("populară") stay untouched.
+_PROFANE = re.compile(
+    r"fuck|shit|bitch|cunt|pussy|\bdick(?:s|head|heads)?\b|whore|slut|bastard|asshole|\bass\b|"
+    r"\bpul(?:a|ă|ii|e)\b|\bpizd|\bmuie\b|\bc[aă]c[aă]t|\bfutu|\bcoaie\b",
+    re.I,
+)
 
 
 def censor(text: str) -> str:
-    return _SLURS.sub(lambda m: m.group(0)[0] + "*" * (len(m.group(0)) - 2) + m.group(0)[-1], text)
+    text = _SLURS.sub(lambda m: m.group(0)[0] + "*" * (len(m.group(0)) - 2) + m.group(0)[-1], text)
+    return _PROFANE.sub(lambda m: m.group(0)[:2] + "*" + m.group(0)[3:] if len(m.group(0)) > 3
+                        else m.group(0)[0] + "*" + m.group(0)[2:], text)
 
 
 def _norm(w: str) -> str:

@@ -1,6 +1,6 @@
 # ClipBot – clipuri automate de la streameri (YouTube + Kick)
 
-Bot local care urmărește **IShowSpeed, Kai Cenat, iRaphahell, Adin Ross și Jynxzi** (YouTube; Kick unde au canal),
+Bot local care urmărește **IShowSpeed, Kai Cenat, iRaphahell, Adin Ross, Jynxzi și Dylan Page** (YouTube; Kick unde au canal),
 găsește singur momentele cele mai interesante (din VOD-uri/video-uri **și din live-uri în timp real**)
 și le transformă în clipuri verticale 9:16 (TikTok / Shorts / Reels) de **maximum 40 de secunde**,
 cu **transcript**, subtitrări sincronizate pe buze, accent pe cuvintele importante și efecte.
@@ -69,7 +69,22 @@ Se alege automat (detectare fețe YuNet), sau îl fixezi la streamer (✎ → �
 **Accent pe cuvintele importante:** cuvântul spus acum e galben; ~14% din cuvinte (cele de hype, sume/numere,
 nume, cuvinte strigate, exclamații, cuvinte rare) sunt **verzi**, iar cele țipate **roșii**. Cuvântul cel mai puternic
 apare **singur, mare, cu animație pop**, iar **zoom-ul punch** cade exact pe el. Shake + flash doar la țipete reale.
-Plus: titlu-hook la început, grading ușor de culoare + sharpen, bară de progres, audio la -14 LUFS, credit sursă.
+Plus: grading ușor de culoare + sharpen, bară de progres, audio la -14 LUFS. Fără text cu sursa în video
+(linkul la sursă rămâne pe site, la fiecare clip).
+
+### Titluri-hook (AI local)
+
+Titlul de sus îl scrie un model AI care rulează **pe PC-ul tău** (Qwen3-4B-Instruct prin llama.cpp, pe procesor,
+ca placa video să rămână liberă pentru Whisper; ~5–13 s pe titlu, fără internet și fără cont). Modelul citește
+transcriptul clipului și propune 3 variante după formule de hook (întrebare, „X face ceva neașteptat”, teasing
+fără să dea finalul) cu detalii concrete din clip – ex. *WHY DOES ISHOWSPEED GIVE JASON MEDS?*,
+*CE A FĂCUT IRAPHAHELL LA FINAL?*. Botul o alege pe cea mai specifică. Dacă modelul lipsește sau dă eroare,
+se folosește titlul euristic de dinainte. Se poate opri din `config.json` → `"ai_titles": false`.
+
+### Cenzură
+
+Înjurăturile din subtitrări și titluri se scriu cu steluță (ex. *fu\*k*, *sh\*t*, *bi\*ch*, *pu\*a*, *mu\*e*),
+iar insultele rasiale se maschează complet (*n\*\*\*a*). Sunetul rămâne original.
 
 ## Unde e totul (tot în folderul acesta)
 
@@ -85,6 +100,8 @@ Plus: titlu-hook la început, grading ușor de culoare + sharpen, bară de progr
 | Model Whisper (~1.6 GB) | `models\whisper\` |
 | Model sincronizare cuvinte (~630 MB) | `models\aligner\` |
 | Detector de fețe YuNet (~230 KB) | `models\face\` |
+| Model AI pentru titluri – Qwen3-4B-Instruct Q4 (~2.5 GB, licență Apache-2.0) | `models\llm\` |
+| llama.cpp (rulează modelul de titluri, build CPU) | `tools\llama\` |
 | deno (necesar lui yt-dlp pentru YouTube) | `tools\deno.exe` |
 | cloudflared (link public, descărcat la prima folosire) | `tools\cloudflared.exe` |
 | Font subtitrări (Montserrat, licență OFL) | `assets\fonts\` |
@@ -120,8 +137,9 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
 `setup.ps1` pune totul în folderul proiectului: pachetele Python în `.venv\` (~3 GB, inclusiv librăriile CUDA),
-deno, detectorul de fețe, modelul de sincronizare (~630 MB) și fonturile. La **prima pornire** se descarcă și
-modelul Whisper (~1.6 GB), deci prima pornire durează câteva minute. Spațiu necesar: ~8 GB + clipurile; recomandat 16 GB RAM.
+deno, detectorul de fețe, modelul de sincronizare (~630 MB), llama.cpp + modelul AI pentru titluri (~2.5 GB) și fonturile.
+La **prima pornire** se descarcă și modelul Whisper (~1.6 GB), deci prima pornire durează câteva minute.
+Spațiu necesar: ~10.5 GB + clipurile; recomandat 16 GB RAM.
 
 Un PC nou pornește cu **totul oprit** (fără partajare, fără auto-scanare, fără înregistrare live) – setările vin din
 `config.default.json` și se pot porni din interfață. `config.json` (setările tale locale) nu e în repo.

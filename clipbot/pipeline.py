@@ -9,7 +9,7 @@ from pathlib import Path
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
-from . import align, analysis, db, render, sources, transcribe
+from . import align, analysis, db, render, sources, titles, transcribe
 from .config import CLIPS_DIR, FFMPEG, ROOT, WORK_DIR, get_streamer, settings
 from .jobs import Cancelled, manager
 
@@ -23,13 +23,6 @@ def safe(s: str) -> str:
 def fmt_t(t: float) -> str:
     t = int(max(0, t))
     return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}" if t >= 3600 else f"{t // 60}:{t % 60:02d}"
-
-
-def credit_for(st: dict, platform: str) -> str:
-    if platform == "kick" and st.get("kick"):
-        return f"kick.com/{st['kick']}"
-    yt = st.get("youtube") or ""
-    return f"youtube.com/{yt}" if yt.startswith("@") else f"YouTube • {st['name']}"
 
 
 def source_key(src: dict) -> str:
@@ -187,12 +180,13 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
          "word": analysis.censor(w["word"])}
         for w in words if start <= w["start"] < end - 0.05
     ]
-    hook = analysis.make_title(rel, cand["peak"] - start, lang, st["name"])
+    hook = titles.make_title(rel, cand["peak"] - start, lang, st["name"], src.get("title") or "",
+                             cand.get("reasons"), log=log)
     clip_id = safe(f"{st['id']}_{src['platform']}_{src['id']}_{int(start)}")
     out = CLIPS_DIR / st["id"] / f"{clip_id}.mp4"
     res = render.render_clip(
         str(raw), start - raw_offset, dur, rel, out,
-        hook=hook, name=st["name"], credit=credit_for(st, src["platform"]), color=st.get("color") or "#FFD400",
+        hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
         crop_sides=float(st.get("crop_sides") or 0), layout=st.get("layout") or "auto", language=lang, log=log,
     )
     reasons = list(dict.fromkeys(cand.get("reasons", [])))
@@ -428,11 +422,12 @@ def rerender_vod_clip(job, clip: dict) -> dict:
         rel = _rel_words(clip)
         lang = clip.get("language")
         peak = ((clip.get("effects") or {}).get("peak") or clip["duration"] / 2)
-        hook = analysis.make_title(rel, peak, lang, st["name"])
+        hook = titles.make_title(rel, peak, lang, st["name"], clip.get("source_title") or "", clip.get("reasons"),
+                                 log=job.log)
         out = CLIPS_DIR / clip["file"]
         res = render.render_clip(
             str(raw), clip["start"] - lo, clip["duration"], rel, out,
-            hook=hook, name=st["name"], credit=credit_for(st, clip["platform"]), color=st.get("color") or "#FFD400",
+            hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
             crop_sides=float(st.get("crop_sides") or 0), layout=st.get("layout") or "auto", language=lang, log=job.log,
         )
         clip = dict(clip, title=hook, effects=res["effects"], thumb=f"{st['id']}/{Path(res['thumb']).name}",

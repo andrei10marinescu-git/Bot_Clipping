@@ -57,6 +57,7 @@ DEFAULT_SETTINGS = {
     "output_fps": 30,
     "encoder": "auto",
     "share_lan": False,
+    "ai_titles": True,
     "share_internet": False,
     "public_port": 8766,
 }
