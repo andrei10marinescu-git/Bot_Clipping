@@ -1,15 +1,39 @@
 # Instaleaza tot ce are nevoie ClipBot, DOAR in folderul acesta.
 # Rulare: powershell -ExecutionPolicy Bypass -File setup.ps1
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"   # checks below call tools that may write to stderr
 Set-Location $PSScriptRoot
 
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-    Write-Host "ffmpeg nu e in PATH. Instaleaza-l cu: winget install Gyan.FFmpeg  (sau pune ffmpeg.exe + ffprobe.exe in tools\)" -ForegroundColor Yellow
+# Python 3.10 - 3.13 (testat pe 3.13). Preferam launcher-ul "py", altfel "python" din PATH.
+$py = $null
+foreach ($cand in @(@("py", "-3.13"), @("py", "-3.12"), @("py", "-3.11"), @("py", "-3.10"), @("python"))) {
+    $exe = $cand[0]; $args0 = @($cand | Select-Object -Skip 1)
+    if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
+    $ver = & $exe @args0 -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+    if ($LASTEXITCODE -eq 0 -and $ver -in @("3.10", "3.11", "3.12", "3.13")) { $py = $cand; break }
 }
+if (-not $py) {
+    Write-Host "Lipseste Python 3.10-3.13. Instaleaza-l cu: winget install Python.Python.3.13  (apoi redeschide terminalul)" -ForegroundColor Red
+    exit 1
+}
+Write-Host "Folosesc Python $ver"
+
+$ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
+if (-not $ff -and -not (Test-Path "tools\ffmpeg.exe")) {
+    Write-Host "Lipseste ffmpeg. Instaleaza-l cu: winget install Gyan.FFmpeg  (apoi redeschide terminalul)" -ForegroundColor Red
+    exit 1
+}
+if ($ff -and -not ((& ffmpeg -hide_banner -filters 2>&1) -match " ass ")) {
+    Write-Host "ffmpeg-ul tau nu are libass (subtitrari). Foloseste build-ul de la: winget install Gyan.FFmpeg" -ForegroundColor Yellow
+}
+if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
+    Write-Host "Nu am gasit o placa NVIDIA: botul merge si pe procesor, dar mult mai incet." -ForegroundColor Yellow
+}
+$ErrorActionPreference = "Stop"
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
     Write-Host "Creez mediul Python in .venv ..."
-    python -m venv .venv
+    $exe = $py[0]; $args0 = @($py | Select-Object -Skip 1)
+    & $exe @args0 -m venv .venv
 }
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 # faster-whisper pulls the CPU-only onnxruntime; the GPU build (same module) replaces it.

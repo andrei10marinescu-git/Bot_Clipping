@@ -73,7 +73,7 @@ Plus: titlu-hook la început, grading ușor de culoare + sharpen, bară de progr
 | Ce | Unde |
 |---|---|
 | Codul botului | `clipbot\`, interfața în `web\`, pornire `run.py` / `start.bat` |
-| Setări + streameri | `config.json` (se editează și din interfață: ⚙ Setări, ✎ la streamer) |
+| Setări + streameri | `config.json` (local, se editează și din interfață: ⚙ Setări, ✎ la streamer); valorile inițiale în `config.default.json` |
 | Clipurile finale (.mp4, .srt, .jpg) | `data\clips\<streamer>\` |
 | Baza de date cu clipuri | `data\clips.db` |
 | Log-uri | `data\logs\clipbot.log` |
@@ -96,17 +96,34 @@ pune `ffmpeg.exe` + `ffprobe.exe` în `tools\`.
 `powershell -ExecutionPolicy Bypass -File setup.ps1`, apoi `start.bat`.
 
 ### Instalare pe alt PC (din GitHub)
-Cerințe: Windows, Python 3.13, ffmpeg (`winget install Gyan.FFmpeg`), ideal o placă NVIDIA.
+
+**Ce trebuie instalat înainte** (o singură dată, din PowerShell):
+
+| Program | Comandă | Obligatoriu? |
+|---|---|---|
+| Windows 10/11 pe 64 de biți | – | da (scripturile și uneltele sunt pentru Windows) |
+| Python 3.10 – 3.13 (testat pe 3.13) | `winget install Python.Python.3.13` | da |
+| ffmpeg cu libass (subtitrări) | `winget install Gyan.FFmpeg` | da |
+| Git (sau descarci ZIP-ul de pe GitHub) | `winget install Git.Git` | doar pentru `git clone` |
+| Placă NVIDIA + driver recent (2025+) | de pe nvidia.com | nu – fără ea merge pe procesor, mult mai încet |
+
+După instalare, **redeschide terminalul** (ca PATH-ul să vadă Python și ffmpeg), apoi:
 
 ```powershell
 git clone https://github.com/andrei10marinescu-git/Bot_Clipping.git
 cd Bot_Clipping
-powershell -ExecutionPolicy Bypass -File setup.ps1   # .venv + deno + fonturi + modele (~4 GB)
+powershell -ExecutionPolicy Bypass -File setup.ps1
 .\start.bat
 ```
 
-În repo **nu** sunt incluse `.venv\`, `tools\`, `models\` și `data\` (clipuri, bază de date, log-uri) –
-se recreează local (`setup.ps1` / la prima rulare).
+`setup.ps1` pune totul în folderul proiectului: pachetele Python în `.venv\` (~3 GB, inclusiv librăriile CUDA),
+deno, detectorul de fețe, modelul de sincronizare (~630 MB) și fonturile. La **prima pornire** se descarcă și
+modelul Whisper (~1.6 GB), deci prima pornire durează câteva minute. Spațiu necesar: ~8 GB + clipurile; recomandat 16 GB RAM.
+
+Un PC nou pornește cu **totul oprit** (fără partajare, fără auto-scanare, fără înregistrare live) – setările vin din
+`config.default.json` și se pot porni din interfață. `config.json` (setările tale locale) nu e în repo.
+
+În repo **nu** sunt incluse `.venv\`, `tools\`, `models\` și `data\` (clipuri, bază de date, log-uri).
 
 ## Setări utile (⚙ Setări)
 

@@ -15,10 +15,15 @@ TOOLS_DIR = ROOT / "tools"
 FONTS_DIR = ROOT / "assets" / "fonts"
 WEB_DIR = ROOT / "web"
 CONFIG_PATH = ROOT / "config.json"
+DEFAULT_CONFIG_PATH = ROOT / "config.default.json"
 DB_PATH = DATA_DIR / "clips.db"
 
 for _d in (DATA_DIR, CLIPS_DIR, WORK_DIR, LIVE_DIR, LOG_DIR, MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+# config.json is the local, editable copy (not in git); a fresh checkout starts from the safe defaults.
+if not CONFIG_PATH.exists() and DEFAULT_CONFIG_PATH.exists():
+    shutil.copyfile(DEFAULT_CONFIG_PATH, CONFIG_PATH)
 
 # Keep every download/cache inside the project folder.
 os.environ.setdefault("HF_HOME", str(MODELS_DIR / "huggingface"))

@@ -19,8 +19,8 @@
     "youtube_chat_replay_max_hours": 3,
     "output_fps": 30,
     "encoder": "auto",
-    "share_lan": true,
-    "share_internet": true,
+    "share_lan": false,
+    "share_internet": false,
     "public_port": 8766
   },
   "streamers": [
@@ -31,8 +31,7 @@
       "kick": "ishowspeed",
       "language": "en",
       "crop_sides": 0.0,
-      "color": "#ff3b3b",
-      "watch_live": true
+      "color": "#ff3b3b"
     },
     {
       "id": "kaicenat",
@@ -41,8 +40,7 @@
       "kick": "",
       "language": "en",
       "crop_sides": 0.0,
-      "color": "#53fc18",
-      "watch_live": false
+      "color": "#53fc18"
     },
     {
       "id": "iraphahell",
@@ -51,8 +49,7 @@
       "kick": "iraphahell",
       "language": "ro",
       "crop_sides": 0.0,
-      "color": "#3b9cff",
-      "watch_live": true
+      "color": "#3b9cff"
     },
     {
       "id": "adinross",
@@ -61,8 +58,7 @@
       "kick": "adinross",
       "language": "en",
       "crop_sides": 0.0,
-      "color": "#ffb23b",
-      "watch_live": true
+      "color": "#ffb23b"
     },
     {
       "id": "jynxzi",
@@ -71,8 +67,7 @@
       "kick": "",
       "language": "en",
       "color": "#f9fbf9",
-      "crop_sides": 0.04,
-      "watch_live": true
+      "crop_sides": 0.04
     }
   ]
 }

@@ -6,6 +6,9 @@ models/
 # Runtime data: rendered clips, database, logs, live buffers, temp files
 data/
 
+# Local settings (a fresh checkout copies config.default.json on first start)
+config.json
+
 # Python
 __pycache__/
 *.pyc
