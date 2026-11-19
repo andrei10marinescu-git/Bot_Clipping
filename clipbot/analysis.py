@@ -398,7 +398,7 @@ def choose_bounds(words: list[dict], peak: float, lo: float, hi: float,
 
 
 def refine_bounds(words: list[dict], start: float, end: float, lo: float, hi: float,
-                  max_len: float = 40) -> tuple[float, float]:
+                  max_len: float = 40, min_len: float = 0.0) -> tuple[float, float]:
     """After precise alignment: tight lead-in and never cut into a word at either edge (keeps <= max_len)."""
     straddle = [w for w in words if w["start"] < start < w["end"]]
     if straddle:
@@ -415,6 +415,16 @@ def refine_bounds(words: list[dict], start: float, end: float, lo: float, hi: fl
     last = max((w["end"] for w in words if start <= w["start"] < end), default=end)
     nxt = min((w["start"] for w in words if w["start"] >= end), default=hi)
     end = min(hi, start + max_len, max(end, min(last + 0.3, nxt - 0.02)))
+    if end - start < min_len:  # the tight lead-in made it too short: let the aftermath run longer, then earlier
+        end = min(hi, start + max_len, start + min_len)
+        cut = [w for w in words if w["start"] < end < w["end"]]
+        if cut:
+            end = cut[-1]["end"] + 0.2 if cut[-1]["end"] + 0.2 <= hi else cut[-1]["start"] - 0.03
+        if end - start < min_len:
+            start = max(lo, end - min_len)
+            cut = [w for w in words if w["start"] < start < w["end"]]
+            if cut:
+                start = cut[0]["start"] - 0.1 if cut[0]["start"] - 0.1 >= lo else cut[0]["end"] + 0.02
     return round(max(lo, start), 3), round(end, 3)
 
 

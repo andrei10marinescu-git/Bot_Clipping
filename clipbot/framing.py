@@ -121,9 +121,9 @@ def _overlay_rect(frames, c: dict, w: int, h: int) -> tuple[float, float, float,
     return L / w, T / h, R / w, B / h
 
 
-def _split_boxes(c: dict, W: int, H: int, rect: tuple | None = None) -> dict:
+def _split_boxes(c: dict, W: int, H: int, rect: tuple | None = None, cam_h: int = CAM_H) -> dict:
     fx, fy, fh = c["cx"] * W, c["cy"] * H, c["fh"] * H
-    cam_aspect = OUT_W / CAM_H
+    cam_aspect = OUT_W / cam_h
     cam = None
     if rect is not None:
         L, T, R, B = rect[0] * W, rect[1] * H, rect[2] * W, rect[3] * H
@@ -145,17 +145,43 @@ def _split_boxes(c: dict, W: int, H: int, rect: tuple | None = None) -> dict:
         cam = (_even(cw), _even(ch), _even(cx), _even(cy))
     cw, ch, cx, cy = cam
 
-    game_aspect = OUT_W / GAME_H
+    game_aspect = OUT_W / (OUT_H - TITLE_H - cam_h)
     gh = H
     gw = min(W, gh * game_aspect)
     gx = (W - gw) / 2
     cam_l, cam_r = cx, cx + cw
-    if cam_r <= W * 0.5:            # cam on the left -> push gameplay crop right, away from it
-        gx = _clamp(max(gx, cam_r - gw * 0.12), 0, W - gw)
+    # Keep the face-cam out of the gameplay crop (a second, cut-off cam looks broken).
+    if cam_r <= W * 0.5:            # cam on the left -> gameplay crop starts right of it
+        gx = _clamp(max(gx, cam_r), 0, W - gw)
     elif cam_l >= W * 0.5:
-        gx = _clamp(min(gx, cam_l - gw * 0.88), 0, W - gw)
+        gx = _clamp(min(gx, cam_l - gw), 0, W - gw)
     game = (_even(gw), _even(gh), _even(gx), 0)
-    return {"cam": cam, "game": game}
+    return {"cam": cam, "game": game, "cam_h": cam_h}
+
+
+def _region_boxes(c: dict, W: int, H: int, region: list) -> dict | None:
+    """Streamer-defined cam area (cam + overlays such as a live subscriber counter), in 1920x1080 pixels.
+
+    Used only when the detected face really sits inside it; the cam panel gets the height that keeps its aspect.
+    """
+    x0, y0, x1, y1 = (float(v) for v in region)
+    sx, sy = W / 1920.0, H / 1080.0
+    L, T, R, B = x0 * sx, y0 * sy, x1 * sx, y1 * sy
+    if R - L < 32 or B - T < 32 or not (L <= c["cx"] * W <= R and T <= c["cy"] * H <= B):
+        return None
+    cam_h = int(_clamp(round(OUT_W * (B - T) / (R - L) / 2) * 2, 480, 940))
+    need_h = (R - L) * cam_h / OUT_W
+    if B - T > need_h + 2:  # region taller than the max panel: keep the middle part
+        mid = (T + B) / 2
+        T, B = mid - need_h / 2, mid + need_h / 2
+    elif B - T < need_h - 2:  # region wider than the min panel: keep the part around the face
+        need_w = (B - T) * OUT_W / cam_h
+        L = _clamp(c["cx"] * W - need_w / 2, L, R - need_w)
+        R = L + need_w
+    boxes = _split_boxes(c, W, H, None, cam_h)
+    boxes["cam"] = (_even(R - L), _even(B - T), _even(L), _even(T))
+    boxes["fixed_cam"] = True
+    return boxes
 
 
 def _track(dets: list[list[tuple]], W: int, crop_w: int, anchor: float | None) -> list[tuple[float, float]]:
@@ -201,7 +227,8 @@ def _track(dets: list[list[tuple]], W: int, crop_w: int, anchor: float | None) -
     return keys
 
 
-def analyze(src: str, start: float, duration: float, src_w: int, src_h: int, prefer: str = "auto") -> dict:
+def analyze(src: str, start: float, duration: float, src_w: int, src_h: int, prefer: str = "auto",
+            cam_region: list | None = None) -> dict:
     base = {"layout": "blur", "src_w": src_w, "src_h": src_h}
     if prefer == "blur" or not YUNET.exists():
         return base
@@ -221,6 +248,10 @@ def analyze(src: str, start: float, duration: float, src_w: int, src_h: int, pre
             "face_frames": round(frac_with_face, 2)}
 
     main = stable[0] if stable else None
+    if main is not None and cam_region and prefer in ("auto", "split"):
+        boxes = _region_boxes(main, W, H, cam_region)
+        if boxes is not None:
+            return {**info, "layout": "split", **boxes}
     if main is not None:
         corner = abs(main["cx"] - 0.5) > 0.17 or abs(main["cy"] - 0.5) > 0.2
         if (prefer in ("auto", "split") and main["fh"] < 0.38 and corner) or prefer == "split":

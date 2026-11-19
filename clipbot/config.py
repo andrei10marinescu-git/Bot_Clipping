@@ -41,7 +41,7 @@ DEFAULT_SETTINGS = {
     "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",
     "max_clip_seconds": 50,
-    "min_clip_seconds": 12,
+    "min_clip_seconds": 20,
     "clips_per_video": 4,
     "clips_per_stream": 8,
     "videos_per_scan": 1,
@@ -59,6 +59,7 @@ DEFAULT_SETTINGS = {
     "encoder": "auto",
     "share_lan": False,
     "ai_titles": True,
+    "cold_open": True,
     "keep_sources_days": 14,
     "share_internet": False,
     "public_port": 8766,
@@ -86,6 +87,11 @@ def save_config(cfg: dict) -> None:
 
 def settings() -> dict:
     return load_config()["settings"]
+
+
+def main_clip_max(cfg: dict) -> float:
+    """Longest clip body: the cold open (up to ~3.5 s) goes in front and the whole video stays <= max_clip_seconds."""
+    return float(cfg["max_clip_seconds"]) - (3.5 if cfg.get("cold_open", True) else 0.0)
 
 
 def get_streamer(streamer_id: str) -> dict | None:

@@ -42,6 +42,7 @@ def clips(streamer: str | None = None, limit: int = 600):
         if not c.get("file") or not f.exists():
             continue
         item = {k: c.get(k) for k in PUBLIC_FIELDS}
+        item["duration"] = (c.get("effects") or {}).get("video_duration") or c.get("duration")
         item["keywords"] = (c.get("effects") or {}).get("keywords") or []
         item["v"] = int(f.stat().st_mtime)
         out.append(item)

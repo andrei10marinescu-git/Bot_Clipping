@@ -202,7 +202,7 @@ function clipCard(c) {
     <div class="vid">
       <video src="/media/${esc(c.file)}${v}" poster="/media/${esc(c.thumb)}${v}" preload="none" controls playsinline></video>
       <span class="tag ${live ? "live" : ""}">${live ? "🔴 LIVE" : "VOD"} · ${platform}</span>
-      <span class="dur">${fmtTime(c.duration)}</span>
+      <span class="dur">${fmtTime((c.effects && c.effects.video_duration) || c.duration)}</span>
     </div>
     <div class="body">
       <div class="meta" title="${esc(c.source_title)}">${esc(String(c.source_title || "").replace(/\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, ""))}</div>
@@ -368,6 +368,7 @@ function showStreamer(sid) {
   const s = state.streamers.find((x) => x.id === sid) || { id: "", name: "", youtube: "", kick: "", language: "en", color: "#53fc18", crop_sides: 0, layout: "auto" };
   for (const k of ["id", "name", "youtube", "kick", "language", "color", "crop_sides", "layout"]) f.elements[k].value = s[k] ?? (k === "layout" ? "auto" : "");
   f.elements.show_subs.checked = !!s.show_subs;
+  f.elements.cam_region.value = Array.isArray(s.cam_region) ? s.cam_region.map((v) => Math.round(v)).join(",") : "";
   $("#streamerModalTitle").textContent = sid ? `Editează ${s.name}` : "Adaugă streamer";
   $("#deleteStreamer").hidden = !sid;
   openModal("streamerModal");

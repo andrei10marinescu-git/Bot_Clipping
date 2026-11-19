@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ClipBot – clipuri automate de la streameri</title>
-  <link rel="stylesheet" href="/style.css?v=4">
+  <link rel="stylesheet" href="/style.css?v=5">
 </head>
 <body>
   <header class="topbar">
@@ -89,6 +89,9 @@
         <label>Decupare laterală – doar la „blur” (0 – 0.3)<input name="crop_sides" type="number" step="0.02" min="0" max="0.3" value="0"></label>
         <label class="check" style="grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px">
           <input name="show_subs" type="checkbox"> Arată în video numărul de abonați YouTube (ex. ▶ 62.8M SUBSCRIBERS)</label>
+        <label style="grid-column: 1 / -1">Zona camerei la layout split (opțional): x1,y1,x2,y2 în pixeli pe 1920×1080 –
+          camera + overlay-urile de lângă ea (ex. contorul live de abonați). Gol = detectare automată.
+          <input name="cam_region" placeholder="ex. 0,436,390,738"></label>
       </form>
       <div class="modal-foot">
         <button class="btn danger ghost" id="deleteStreamer">Șterge streamer</button>
@@ -136,6 +139,6 @@
   </div>
 
   <div id="toast"></div>
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=5"></script>
 </body>
 </html>

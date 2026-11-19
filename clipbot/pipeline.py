@@ -11,7 +11,7 @@ import yt_dlp
 from yt_dlp.utils import download_range_func
 
 from . import align, analysis, db, header, render, sources, titles, transcribe
-from .config import CLIPS_DIR, FFMPEG, ROOT, SOURCES_DIR, WORK_DIR, get_streamer, settings
+from .config import CLIPS_DIR, FFMPEG, ROOT, SOURCES_DIR, WORK_DIR, get_streamer, main_clip_max, settings
 from .jobs import Cancelled, logger, manager
 
 HOP = analysis.HOP
@@ -169,11 +169,13 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
     lang = cand.get("language")
     if raw_end is None:
         raw_end = raw_offset + render.probe(raw)["duration"]
-    max_len = float(settings()["max_clip_seconds"])
+    max_len = main_clip_max(settings())
+    min_len = min(float(settings()["min_clip_seconds"]), max_len)
 
     # Precise word timing (forced alignment) on the clip audio, then snap the cut points to real word edges.
+    # The window reaches further after the end, in case trimming a silent lead-in needs a longer aftermath.
     a_lo = max(raw_offset, start - 0.8)
-    a_hi = min(raw_end, end + 0.8)
+    a_hi = min(raw_end, end + max(0.8, min_len - (end - start) + 4.0))
     near = [w for w in cand["words"] if a_lo - 0.5 <= w["start"] < a_hi]
     words = near
     try:
@@ -184,7 +186,7 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
     except Exception as e:  # noqa: BLE001 - keep Whisper timing if alignment fails
         if log:
             log(f"Aliniere indisponibilă ({e}); folosesc timpii Whisper.")
-    start, end = analysis.refine_bounds(words, start, end, a_lo, a_hi, max_len)
+    start, end = analysis.refine_bounds(words, start, end, a_lo, a_hi, max_len, min_len)
     dur = round(end - start, 2)
     rel = [
         {"start": round(max(0.0, w["start"] - start), 3), "end": round(min(w["end"], end) - start, 3),
@@ -199,7 +201,7 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
         str(raw), start - raw_offset, dur, rel, out,
         hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
         crop_sides=float(st.get("crop_sides") or 0), layout=st.get("layout") or "auto", language=lang, log=log,
-        subs=subs_label(st),
+        subs=subs_label(st), cam_region=st.get("cam_region"),
     )
     reasons = list(dict.fromkeys(cand.get("reasons", [])))
     fx = res["effects"]
@@ -306,9 +308,9 @@ def process_vod(job, streamer_id: str, url: str, max_clips: int | None = None, a
             audio = transcribe.load_audio(str(audio_path), w0, w1 - w0)
             tr = transcribe.transcribe(audio, language=lang, offset=w0)
             r_end = analysis.reaction_end(db_series, p)
-            s, e = analysis.choose_bounds(tr["words"], p, w0, w1, cfg["min_clip_seconds"], cfg["max_clip_seconds"],
+            s, e = analysis.choose_bounds(tr["words"], p, w0, w1, cfg["min_clip_seconds"], main_clip_max(cfg),
                                           react_end=r_end)
-            words = [w for w in tr["words"] if s - 1.0 <= w["start"] < e + 1.0]
+            words = [w for w in tr["words"] if s - 1.0 <= w["start"] < e + 8.0]
             t_score, t_reasons = analysis.text_score([w for w in words if s <= w["start"] < e], lang or tr["language"])
             q, q_reasons = analysis.clip_quality(score, tr["words"], s, e, p)
             foreign = analysis.foreign_share([w for w in words if s <= w["start"] < e], lang)
@@ -343,7 +345,7 @@ def process_vod(job, streamer_id: str, url: str, max_clips: int | None = None, a
             job.check()
             job.set_progress(0.72 + 0.27 * i / max(1, len(chosen)),
                              f"Descarc + randez clipul {i + 1}/{len(chosen)} ({fmt_t(c['start'])}, {c['end'] - c['start']:.0f}s)…")
-            lo, hi = max(0.0, c["start"] - 1.0), min(real_dur, c["end"] + 1.0)
+            lo, hi = max(0.0, c["start"] - 1.0), min(real_dur, c["end"] + 6.0)
             raw = download_section(job, src, lo, hi, work, f"raw_{i}")
             clip = finalize_clip(st, src, raw, lo, c, log=job.log, raw_end=hi)
             made.append(clip["id"])
@@ -490,7 +492,7 @@ def render_into(clip: dict, st: dict, raw: Path, raw_offset: float, hook: str, l
             str(raw), clip["start"] - raw_offset, clip["duration"], _rel_words(clip), tmp,
             hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
             crop_sides=float(st.get("crop_sides") or 0), layout=layout, language=clip.get("language"), log=log,
-            subs=subs_label(st),
+            subs=subs_label(st), cam_region=st.get("cam_region"),
         )
         _replace(tmp, out)
         for ext in (".srt", ".jpg"):

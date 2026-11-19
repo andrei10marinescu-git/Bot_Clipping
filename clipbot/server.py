@@ -134,6 +134,7 @@ class StreamerReq(BaseModel):
     crop_sides: float = 0.0
     layout: str = "auto"
     show_subs: bool = False
+    cam_region: str = ""
 
 
 @app.get("/api/state")
@@ -274,6 +275,17 @@ def api_save_streamer(req: StreamerReq):
     data["name"] = req.name.strip()
     data["crop_sides"] = max(0.0, min(0.3, float(req.crop_sides)))
     data["layout"] = req.layout if req.layout in ("auto", "split", "crop", "blur") else "auto"
+    region = [v for v in re.split(r"[\s,;]+", req.cam_region.strip()) if v]
+    if region:
+        try:
+            x0, y0, x1, y1 = (float(v) for v in region)
+        except ValueError:
+            raise HTTPException(400, "Zona camerei: 4 numere x1,y1,x2,y2 (pixeli pe 1920×1080), ex. 0,436,390,738")
+        if not (0 <= x0 < x1 <= 1920 and 0 <= y0 < y1 <= 1080):
+            raise HTTPException(400, "Zona camerei trebuie să fie în cadrul 1920×1080 (x1 < x2, y1 < y2).")
+        data["cam_region"] = [x0, y0, x1, y1]
+    else:
+        data["cam_region"] = None
     data["kick"] = data["kick"].strip().rstrip("/").rsplit("/", 1)[-1] if data["kick"] else ""
     try:
         data["youtube"] = sources.normalize_youtube(data["youtube"])

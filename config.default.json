@@ -3,7 +3,7 @@
     "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",
     "max_clip_seconds": 50,
-    "min_clip_seconds": 12,
+    "min_clip_seconds": 20,
     "clips_per_video": 4,
     "clips_per_stream": 8,
     "videos_per_scan": 1,
@@ -32,7 +32,13 @@
       "language": "en",
       "crop_sides": 0.0,
       "color": "#ff3b3b",
-      "show_subs": true
+      "show_subs": false,
+      "cam_region": [
+        0,
+        436,
+        390,
+        738
+      ]
     },
     {
       "id": "kaicenat",

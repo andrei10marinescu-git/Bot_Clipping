@@ -50,9 +50,15 @@ Butonul **🌐 Partajează** (sus în panou) pornește o **galerie separată, do
 
 Pentru fiecare vârf candidat, botul transcrie ~1 minut în jur (Whisper `large-v3-turbo` pe GPU) și construiește clipul
 ca **setup → reacție**: începe la începutul schimbului de replici care duce la moment (după ultima pauză clară, până la
-~26 s înainte) și se termină imediat după ce reacția se calmează (≤ 50 s). Tăieturile cad mereu pe margini de propoziție.
+~26 s înainte) și se termină imediat după ce reacția se calmează. Clipul are **minimum 20 s** (dacă e mai scurt,
+lasă reacția să ruleze mai mult) și maximum 50 s cu tot cu începutul. Tăieturile cad mereu pe margini de propoziție.
 Candidații se notează pe tot clipul (hype susținut, densitatea vorbirii, unde cade momentul), iar cei slabi
 sunt aruncați – mai bine 2 clipuri foarte bune decât 4 mediocre.
+
+**Început cu acțiune (cold open):** primele ~2–3.5 secunde ale fiecărui clip sunt o secvență scurtă cu cele mai
+puternice momente din el (reacția principală și, dacă există, încă o reacție puternică), cu flash între ele, apoi clipul
+pornește de la setup. Cine dă scroll vede direct acțiunea și rămâne să afle ce s-a întâmplat. Dacă acțiunea e deja în
+primele 5 secunde, nu se mai adaugă. Se poate opri din `config.json` → `"cold_open": false`.
 
 **În live**, botul nu taie la primul vârf: așteaptă să se termine „valul” de reacție (până la ~70 s) și ia vârful cel mai
 puternic din el. Apoi caută, la 0.1 s precizie, reacția reală din audio din jurul lui (chat-ul reacționează cu câteva
@@ -89,15 +95,21 @@ Pe Hugging Face modelul cere un cont gratuit: pe pagina lui apeși *Agree*, îț
 
 Se alege automat (detectare fețe YuNet), sau îl fixezi la streamer (✎ → „Încadrare 9:16”).
 
+**Zona camerei** (✎ → „Zona camerei”, opțional): dreptunghiul x1,y1,x2,y2 în pixeli pe cadrul 1920×1080 care se pune
+sus la layout-ul split, cu tot cu overlay-urile de lângă cameră. La IShowSpeed e `0,436,390,738`: camera + numărul de
+vizualizatori live de deasupra + **contorul live de abonați** de dedesubt. Panoul camerei își ia înălțimea după zonă,
+zoom-ul punch trece pe joc (ca să nu taie contoarele), iar zona se folosește doar când fața chiar e în ea
+(la stream-urile IRL rămâne detectarea automată). În panoul cu jocul nu mai intră bucăți din cameră.
+
 **Accent pe cuvintele importante:** cuvântul spus acum e galben; ~14% din cuvinte (cele de hype, sume/numere,
 nume, cuvinte strigate, exclamații, cuvinte rare) sunt **verzi**, iar cele țipate **roșii**. Cuvântul cel mai puternic
 apare **singur, mare, cu animație pop**, iar **zoom-ul punch** cade exact pe el. Shake + flash doar la țipete reale.
 Plus: grading ușor de culoare + sharpen, bară de progres, audio la -14 LUFS cu fade-out scurt la final. Fără text cu
 sursa în video (linkul la sursă rămâne pe site, la fiecare clip).
 
-**Header-ul de sus** (apare cu fade-in și stă tot clipul): badge cu numele streamerului în culoarea lui, opțional
-badge YouTube cu **numărul de abonați** (ex. *▶ 62.8M SUBSCRIBERS*, pornit la IShowSpeed; se activează la orice streamer
-din ✎ → „Arată în video numărul de abonați”) și titlul în casete albe cu **emoji colorate**. Header-ul e desenat cu
+**Header-ul de sus** (stă tot clipul): badge cu numele streamerului în culoarea lui, opțional badge YouTube cu
+numărul de abonați (ex. *▶ 62.8M SUBSCRIBERS*, oprit implicit; se activează din ✎ → „Arată în video numărul de abonați”)
+și titlul în casete albe cu **emoji colorate**. Header-ul e desenat cu
 Pillow (fontul Montserrat + Segoe UI Emoji din Windows), pentru că subtitrările ASS nu pot afișa emoji color.
 Numărul de abonați se citește de pe YouTube și se reîmprospătează la câteva ore.
 

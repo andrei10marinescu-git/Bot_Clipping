@@ -13,7 +13,7 @@ import numpy as np
 import websocket
 
 from . import analysis, sources, transcribe
-from .config import FFMPEG, LIVE_DIR, get_streamer, load_config, save_config, settings
+from .config import FFMPEG, LIVE_DIR, get_streamer, load_config, main_clip_max, save_config, settings
 from .jobs import logger, manager
 
 SEGMENT_S = 6
@@ -468,9 +468,9 @@ def process_live_clip(job, streamer_id: str, raw: str, raw_offset: float, peak: 
             job.log(f"Momentul exact e cu {exact - peak:+.1f}s față de detecție (reacția reală).")
             peak = exact
             react_end = max(react_end or 0.0, peak + 3.0)
-        start, end = analysis.choose_bounds(tr["words"], peak, lo, hi, cfg["min_clip_seconds"], cfg["max_clip_seconds"],
+        start, end = analysis.choose_bounds(tr["words"], peak, lo, hi, cfg["min_clip_seconds"], main_clip_max(cfg),
                                             react_end=react_end)
-        words = [w for w in tr["words"] if start - 1.0 <= w["start"] < end + 1.0]
+        words = [w for w in tr["words"] if start - 1.0 <= w["start"] < end + 8.0]
         spoken = [w for w in words if start <= w["start"] < end]
         if len(spoken) < 4 and sig < 5:
             job.log("Moment fără vorbire (muzică/cutscene) – sărit.")
