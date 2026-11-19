@@ -1,0 +1,78 @@
+{
+  "settings": {
+    "whisper_model": "large-v3-turbo",
+    "whisper_device": "auto",
+    "max_clip_seconds": 40,
+    "min_clip_seconds": 12,
+    "clips_per_video": 4,
+    "clips_per_stream": 8,
+    "videos_per_scan": 1,
+    "skip_videos_shorter_than": 90,
+    "max_video_age_days": 7,
+    "auto_scan": false,
+    "scan_interval_minutes": 60,
+    "auto_live": false,
+    "live_check_interval_seconds": 120,
+    "live_cooldown_seconds": 90,
+    "live_sensitivity": 1.0,
+    "live_max_clips_per_hour": 5,
+    "youtube_chat_replay_max_hours": 3,
+    "output_fps": 30,
+    "encoder": "auto",
+    "share_lan": true,
+    "share_internet": true,
+    "public_port": 8766
+  },
+  "streamers": [
+    {
+      "id": "ishowspeed",
+      "name": "IShowSpeed",
+      "youtube": "@IShowSpeed",
+      "kick": "ishowspeed",
+      "language": "en",
+      "crop_sides": 0.0,
+      "color": "#ff3b3b",
+      "watch_live": true
+    },
+    {
+      "id": "kaicenat",
+      "name": "Kai Cenat",
+      "youtube": "@KaiCenat",
+      "kick": "",
+      "language": "en",
+      "crop_sides": 0.0,
+      "color": "#53fc18",
+      "watch_live": false
+    },
+    {
+      "id": "iraphahell",
+      "name": "iRaphahell",
+      "youtube": "UCtn4sFXvAW1il1MKDja11YA",
+      "kick": "iraphahell",
+      "language": "ro",
+      "crop_sides": 0.0,
+      "color": "#3b9cff",
+      "watch_live": true
+    },
+    {
+      "id": "adinross",
+      "name": "Adin Ross",
+      "youtube": "@AdinRoss",
+      "kick": "adinross",
+      "language": "en",
+      "crop_sides": 0.0,
+      "color": "#ffb23b",
+      "watch_live": true
+    },
+    {
+      "id": "jynxzi",
+      "name": "Jynxzi",
+      "youtube": "@Jynxzi",
+      "kick": "",
+      "language": "en",
+      "color": "#f9fbf9",
+      "crop_sides": 0.04,
+      "watch_live": true
+    }
+  ]
+}

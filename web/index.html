@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClipBot – clipuri automate de la streameri</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">✂️ <b>ClipBot</b> <span class="muted">clipuri automate · YouTube + Kick</span></div>
+    <div class="top-actions">
+      <label class="switch" title="Verifică periodic videoclipurile noi și le procesează automat">
+        <input type="checkbox" id="autoScan"><span class="slider"></span> Auto video noi
+      </label>
+      <label class="switch" title="Monitorizează live-urile tuturor streamerilor și face clipuri în timp real">
+        <input type="checkbox" id="autoLive"><span class="slider"></span> Auto live (toți)
+      </label>
+      <button id="btnCheckLive" class="btn ghost">↻ Verifică live</button>
+      <button id="btnShare" class="btn ghost" title="Arată clipurile și altora (doar vizionare + descărcare)">🌐 Partajează</button>
+      <button id="btnSettings" class="btn ghost">⚙ Setări</button>
+      <button id="btnJobs" class="btn">Activitate <span id="jobsCount" class="pill">0</span></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <div id="nav"></div>
+      <button class="btn ghost full" id="btnAddStreamer">＋ Adaugă streamer</button>
+      <div class="sys" id="sysInfo"></div>
+    </nav>
+    <main id="main"></main>
+  </div>
+
+  <aside class="drawer" id="jobsDrawer">
+    <div class="drawer-head">
+      <h3>Activitate</h3>
+      <button class="btn ghost sm" data-close="jobsDrawer">✕</button>
+    </div>
+    <div id="jobsList" class="jobs"></div>
+  </aside>
+
+  <div class="modal" id="videosModal">
+    <div class="modal-box wide">
+      <div class="modal-head">
+        <h3 id="videosTitle">Videoclipuri recente</h3>
+        <button class="btn ghost sm" data-close="videosModal">✕</button>
+      </div>
+      <div id="videosBody" class="videos"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="settingsModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Setări</h3>
+        <button class="btn ghost sm" data-close="settingsModal">✕</button>
+      </div>
+      <form id="settingsForm" class="form-grid"></form>
+      <div class="modal-foot">
+        <button class="btn" id="saveSettings">Salvează</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="streamerModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 id="streamerModalTitle">Streamer</h3>
+        <button class="btn ghost sm" data-close="streamerModal">✕</button>
+      </div>
+      <form id="streamerForm" class="form-grid">
+        <input type="hidden" name="id">
+        <label>Nume<input name="name" required></label>
+        <label>YouTube (@handle sau ID canal)<input name="youtube" placeholder="@IShowSpeed"></label>
+        <label>Kick (slug canal)<input name="kick" placeholder="adinross"></label>
+        <label>Limbă
+          <select name="language"><option value="en">Engleză</option><option value="ro">Română</option><option value="">Auto</option></select>
+        </label>
+        <label>Culoare<input name="color" type="color" value="#53fc18"></label>
+        <label>Încadrare 9:16
+          <select name="layout">
+            <option value="auto">Auto (recomandat)</option>
+            <option value="split">Split: facecam sus + joc jos</option>
+            <option value="crop">Crop pe față (IRL / just chatting)</option>
+            <option value="blur">Tot cadrul + fundal blurat</option>
+          </select>
+        </label>
+        <label>Decupare laterală – doar la „blur” (0 – 0.3)<input name="crop_sides" type="number" step="0.02" min="0" max="0.3" value="0"></label>
+      </form>
+      <div class="modal-foot">
+        <button class="btn danger ghost" id="deleteStreamer">Șterge streamer</button>
+        <button class="btn" id="saveStreamer">Salvează</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="shareModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>🌐 Partajează clipurile</h3>
+        <button class="btn ghost sm" data-close="shareModal">✕</button>
+      </div>
+      <div class="share-body">
+        <p class="muted">Ceilalți văd o <b>galerie separată</b>: pot viziona și descărca clipurile, dar nu pot șterge,
+          procesa sau schimba nimic. Panoul acesta rămâne doar pe PC-ul tău.</p>
+        <label class="switch"><input type="checkbox" id="shareLan"><span class="slider"></span>
+          <b>În rețeaua locală</b> <span class="muted">(aceeași rețea Wi-Fi / cablu)</span></label>
+        <div id="shareLanUrls" class="share-urls"></div>
+        <label class="switch"><input type="checkbox" id="shareNet"><span class="slider"></span>
+          <b>Pe internet</b> <span class="muted">(link public prin Cloudflare, se schimbă la fiecare pornire)</span></label>
+        <div id="shareNetUrl" class="share-urls"></div>
+        <div id="shareLocal" class="share-urls muted"></div>
+        <p class="muted small">La prima pornire în rețeaua locală, Windows poate întreba dacă permiți accesul pentru
+          Python – alege <b>Permite</b> (rețele private).</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

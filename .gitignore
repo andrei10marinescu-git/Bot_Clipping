@@ -1,0 +1,15 @@
+# Local Python environment, downloaded tools and AI models (recreated by setup.ps1)
+.venv/
+tools/
+models/
+
+# Runtime data: rendered clips, database, logs, live buffers, temp files
+data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Temporary files
+*.tmp
+*.part

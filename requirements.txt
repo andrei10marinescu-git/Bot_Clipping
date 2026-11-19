@@ -1,0 +1,12 @@
+yt-dlp[default,curl-cffi]>=2026.10.26
+curl-cffi>=0.17
+faster-whisper>=1.2.1
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=2.0
+websocket-client>=1.8
+opencv-python-headless>=4.10
+onnxruntime-gpu[cuda,cudnn]>=1.21
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+huggingface_hub

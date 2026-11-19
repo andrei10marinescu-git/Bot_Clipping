@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clipuri – IShowSpeed, Kai Cenat, iRaphahell, Adin Ross, Jynxzi</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .pub-head { position: sticky; top: 0; z-index: 20; background: rgba(11,13,18,.94); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; flex-direction: column; gap: 10px; }
+    .pub-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .pub-top .brand { font-size: 19px; }
+    .pub-top input { width: min(320px, 100%); }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 99px; padding: 6px 14px;
+      cursor: pointer; font-weight: 700; font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
+    .tab .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+    .tab .n { color: var(--muted); font-weight: 600; }
+    .tab.active { background: var(--c); color: #0b0d12; border-color: var(--c); }
+    .tab.active .n { color: #0b0d12; }
+    .tab.active .dot { background: #0b0d12; }
+    .pub-main { padding: 18px 20px 60px; max-width: 1500px; margin: 0 auto; }
+    .card { border-top: 3px solid var(--c); }
+    .who { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--c); }
+    .more { display: flex; justify-content: center; margin-top: 22px; }
+  </style>
+</head>
+<body>
+  <header class="pub-head">
+    <div class="pub-top">
+      <div class="brand">✂️ <b>Clipuri</b> <span class="muted">cele mai tari momente din live-uri și video-uri</span></div>
+      <input id="q" type="search" placeholder="Caută în titluri și transcript…">
+    </div>
+    <div class="tabs" id="tabs"></div>
+  </header>
+  <main class="pub-main">
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden>Niciun clip încă.</div>
+    <div class="more"><button class="btn ghost" id="more" hidden>Mai multe clipuri</button></div>
+  </main>
+  <div id="toast"></div>
+  <script src="public.js"></script>
+</body>
+</html>
