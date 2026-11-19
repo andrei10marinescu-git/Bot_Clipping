@@ -10,7 +10,7 @@ from pathlib import Path
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
-from . import align, analysis, db, render, sources, titles, transcribe
+from . import align, analysis, db, header, render, sources, titles, transcribe
 from .config import CLIPS_DIR, FFMPEG, ROOT, SOURCES_DIR, WORK_DIR, get_streamer, settings
 from .jobs import Cancelled, logger, manager
 
@@ -28,6 +28,16 @@ def fmt_t(t: float) -> str:
 
 def source_key(src: dict) -> str:
     return f"{src['platform']}:{src['id']}"
+
+
+def subs_label(st: dict) -> str | None:
+    """'62.8M SUBSCRIBERS' badge for streamers with show_subs on."""
+    if not st.get("show_subs") or not st.get("youtube"):
+        return None
+    n = sources.yt_subscribers(st["youtube"])
+    if not n:
+        return None
+    return f"{header.format_count(n)} {'ABONAȚI' if st.get('language') == 'ro' else 'SUBSCRIBERS'}"
 
 
 def timestamped_url(src: dict, t: float) -> str:
@@ -189,6 +199,7 @@ def finalize_clip(st: dict, src: dict, raw: Path, raw_offset: float, cand: dict,
         str(raw), start - raw_offset, dur, rel, out,
         hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
         crop_sides=float(st.get("crop_sides") or 0), layout=st.get("layout") or "auto", language=lang, log=log,
+        subs=subs_label(st),
     )
     reasons = list(dict.fromkeys(cand.get("reasons", [])))
     fx = res["effects"]
@@ -290,6 +301,8 @@ def process_vod(job, streamer_id: str, url: str, max_clips: int | None = None, a
             job.check()
             job.set_progress(0.38 + 0.32 * i / max(1, len(peaks)), f"Transcriu momentul {i + 1}/{len(peaks)} ({fmt_t(p)})…")
             w0, w1 = max(0.0, p - max(36.0, cfg["max_clip_seconds"] - 4)), min(real_dur, p + 20)
+            fine = analysis.rms_db_series(str(audio_path), hop=0.1, start=w0, duration=w1 - w0)
+            p = w0 + analysis.refine_peak(fine, 0.1, p - w0)
             audio = transcribe.load_audio(str(audio_path), w0, w1 - w0)
             tr = transcribe.transcribe(audio, language=lang, offset=w0)
             r_end = analysis.reaction_end(db_series, p)
@@ -477,6 +490,7 @@ def render_into(clip: dict, st: dict, raw: Path, raw_offset: float, hook: str, l
             str(raw), clip["start"] - raw_offset, clip["duration"], _rel_words(clip), tmp,
             hook=hook, name=st["name"], credit="", color=st.get("color") or "#FFD400",
             crop_sides=float(st.get("crop_sides") or 0), layout=layout, language=clip.get("language"), log=log,
+            subs=subs_label(st),
         )
         _replace(tmp, out)
         for ext in (".srt", ".jpg"):

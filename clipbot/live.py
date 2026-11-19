@@ -394,7 +394,8 @@ class LiveMonitor(threading.Thread):
         now = time.time()
         while self.clip_walls and self.clip_walls[0] < now - 3600:
             self.clip_walls.popleft()
-        if len(self.clip_walls) >= cfg["live_max_clips_per_hour"]:
+        cap = int(cfg.get("live_max_clips_per_hour") or 0)  # 0 = unlimited
+        if cap > 0 and len(self.clip_walls) >= cap:
             return
         self.last_clip_peak = p["peak"]
         self.clip_walls.append(now)
@@ -461,12 +462,23 @@ def process_live_clip(job, streamer_id: str, raw: str, raw_offset: float, peak: 
         lang = st.get("language") or None
         tr = transcribe.transcribe(audio, language=lang, offset=raw_offset)
         lo, hi = max(s, raw_offset), min(e, raw_end)
+        fine = analysis.rms_db_series(raw, hop=0.1)
+        exact = raw_offset + analysis.refine_peak(fine, 0.1, peak - raw_offset)
+        if abs(exact - peak) >= 0.5:
+            job.log(f"Momentul exact e cu {exact - peak:+.1f}s față de detecție (reacția reală).")
+            peak = exact
+            react_end = max(react_end or 0.0, peak + 3.0)
         start, end = analysis.choose_bounds(tr["words"], peak, lo, hi, cfg["min_clip_seconds"], cfg["max_clip_seconds"],
                                             react_end=react_end)
         words = [w for w in tr["words"] if start - 1.0 <= w["start"] < end + 1.0]
         spoken = [w for w in words if start <= w["start"] < end]
         if len(spoken) < 4 and sig < 5:
             job.log("Moment fără vorbire (muzică/cutscene) – sărit.")
+            if on_skip:
+                on_skip()
+            return {"clip": None, "skipped": True}
+        if len(spoken) / max(1.0, end - start) < 0.4 and sig < 6:
+            job.log(f"Prea puțină vorbire ({len(spoken)} cuvinte în {end - start:.0f}s) – sărit.")
             if on_skip:
                 on_skip()
             return {"clip": None, "skipped": True}

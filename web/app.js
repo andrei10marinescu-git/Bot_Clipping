@@ -15,7 +15,7 @@ const SETTINGS_FIELDS = [
   ["min_clip_seconds", "Durată minimă clip (s)", 1],
   ["live_sensitivity", "Sensibilitate live (0.3 – 5)", 0.1],
   ["live_cooldown_seconds", "Pauză între clipuri live (s)", 5],
-  ["live_max_clips_per_hour", "Max clipuri live / oră", 1],
+  ["live_max_clips_per_hour", "Max clipuri live / oră (0 = nelimitat)", 1],
   ["live_check_interval_seconds", "Verificare live la fiecare (s)", 10],
   ["scan_interval_minutes", "Auto video noi la fiecare (min)", 5],
   ["videos_per_scan", "Video-uri noi / platformă / scanare", 1],
@@ -41,6 +41,12 @@ async function api(path, opts = {}) {
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtCount(n) {
+  for (const [div, suf] of [[1e9, "B"], [1e6, "M"], [1e3, "K"]]) {
+    if (n >= div) { const v = n / div; return (v < 100 ? v.toFixed(1).replace(/\.0$/, "") : v.toFixed(0)) + suf; }
+  }
+  return String(n);
 }
 function fmtTime(sec) {
   sec = Math.max(0, Math.floor(sec || 0));
@@ -143,7 +149,7 @@ function renderSections() {
     $("[data-name]", sec).textContent = s.name;
     const yt = ytLink(s.youtube);
     $("[data-links]", sec).innerHTML = [
-      yt ? `<a href="${esc(yt)}" target="_blank">▶ YouTube</a>` : "",
+      yt ? `<a href="${esc(yt)}" target="_blank">▶ YouTube${s.subs ? ` · ${esc(fmtCount(s.subs))} abonați` : ""}</a>` : "",
       s.kick ? `<a href="https://kick.com/${esc(s.kick)}" target="_blank">🟩 kick.com/${esc(s.kick)}</a>` : "",
       `<span>${s.clips || 0} clipuri</span>`,
     ].join("");
@@ -361,6 +367,7 @@ function showStreamer(sid) {
   const f = $("#streamerForm");
   const s = state.streamers.find((x) => x.id === sid) || { id: "", name: "", youtube: "", kick: "", language: "en", color: "#53fc18", crop_sides: 0, layout: "auto" };
   for (const k of ["id", "name", "youtube", "kick", "language", "color", "crop_sides", "layout"]) f.elements[k].value = s[k] ?? (k === "layout" ? "auto" : "");
+  f.elements.show_subs.checked = !!s.show_subs;
   $("#streamerModalTitle").textContent = sid ? `Editează ${s.name}` : "Adaugă streamer";
   $("#deleteStreamer").hidden = !sid;
   openModal("streamerModal");
@@ -497,6 +504,7 @@ $("#saveStreamer").onclick = async () => {
   if (!f.reportValidity()) return;
   const body = Object.fromEntries(new FormData(f));
   body.crop_sides = Number(body.crop_sides || 0);
+  body.show_subs = f.elements.show_subs.checked;
   if (!body.id) delete body.id;
   try { await api("/api/streamers", { method: "POST", body }); closeModal("streamerModal"); toast("Streamer salvat"); refreshState(); }
   catch (e) { toast(e.message, true); }

@@ -27,7 +27,7 @@ SETTING_LIMITS = {
     "live_check_interval_seconds": (30, 1800),
     "live_cooldown_seconds": (20, 1800),
     "live_sensitivity": (0.3, 5.0),
-    "live_max_clips_per_hour": (1, 60),
+    "live_max_clips_per_hour": (0, 60),
     "youtube_chat_replay_max_hours": (0, 24),
     "output_fps": (24, 60),
 }
@@ -44,6 +44,9 @@ def _scheduler() -> None:
                 removed = pipeline.cleanup_sources()
                 if removed:
                     logger.info("removed %d old clip sources", removed)
+                for st in load_config()["streamers"]:
+                    if st.get("youtube"):
+                        sources.yt_subscribers(st["youtube"])
             cfg = load_config()
             s = cfg["settings"]
             if s.get("auto_scan") and time.time() - last_scan >= float(s["scan_interval_minutes"]) * 60:
@@ -130,6 +133,7 @@ class StreamerReq(BaseModel):
     color: str = "#53fc18"
     crop_sides: float = 0.0
     layout: str = "auto"
+    show_subs: bool = False
 
 
 @app.get("/api/state")
@@ -139,7 +143,8 @@ def api_state():
     live = get_live_manager().status()
     return {
         "settings": cfg["settings"],
-        "streamers": [{**s, "clips": counts.get(s["id"], 0), "live": live.get(s["id"])} for s in cfg["streamers"]],
+        "streamers": [{**s, "clips": counts.get(s["id"], 0), "live": live.get(s["id"]),
+                       "subs": sources.cached_subscribers(s.get("youtube"))} for s in cfg["streamers"]],
         "jobs": manager.list(),
         "whisper": transcribe.model_info(),
     }

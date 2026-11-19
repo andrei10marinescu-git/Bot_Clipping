@@ -55,8 +55,11 @@ Candidații se notează pe tot clipul (hype susținut, densitatea vorbirii, unde
 sunt aruncați – mai bine 2 clipuri foarte bune decât 4 mediocre.
 
 **În live**, botul nu taie la primul vârf: așteaptă să se termine „valul” de reacție (până la ~70 s) și ia vârful cel mai
-puternic din el. La streamerii pe română, momentele în care vorbesc aproape doar personajele din joc/video (în engleză,
-ex. cutscene-uri GTA) sunt sărite în live și depunctate la VOD-uri; un moment sărit nu consumă din limita de clipuri pe oră.
+puternic din el. Apoi caută, la 0.1 s precizie, reacția reală din audio din jurul lui (chat-ul reacționează cu câteva
+secunde întârziere) și centrează clipul pe ea. Nu există limită de clipuri pe oră (`Max clipuri live / oră` = 0);
+între două clipuri ale aceluiași live sunt minimum 90 s. Sunt sărite momentele aproape fără vorbire (dacă reacția
+nu e uriașă) și, la streamerii pe română, cele în care vorbesc aproape doar personajele din joc/video (în engleză,
+ex. cutscene-uri GTA); la VOD-uri acestea sunt depunctate.
 Dacă înregistrarea live rămâne blocată (ex. după o cădere de internet), botul o repornește singur după 60 s fără date noi.
 
 ### Transcript în română
@@ -89,17 +92,25 @@ Se alege automat (detectare fețe YuNet), sau îl fixezi la streamer (✎ → �
 **Accent pe cuvintele importante:** cuvântul spus acum e galben; ~14% din cuvinte (cele de hype, sume/numere,
 nume, cuvinte strigate, exclamații, cuvinte rare) sunt **verzi**, iar cele țipate **roșii**. Cuvântul cel mai puternic
 apare **singur, mare, cu animație pop**, iar **zoom-ul punch** cade exact pe el. Shake + flash doar la țipete reale.
-Plus: grading ușor de culoare + sharpen, bară de progres, audio la -14 LUFS. Fără text cu sursa în video
-(linkul la sursă rămâne pe site, la fiecare clip).
+Plus: grading ușor de culoare + sharpen, bară de progres, audio la -14 LUFS cu fade-out scurt la final. Fără text cu
+sursa în video (linkul la sursă rămâne pe site, la fiecare clip).
+
+**Header-ul de sus** (apare cu fade-in și stă tot clipul): badge cu numele streamerului în culoarea lui, opțional
+badge YouTube cu **numărul de abonați** (ex. *▶ 62.8M SUBSCRIBERS*, pornit la IShowSpeed; se activează la orice streamer
+din ✎ → „Arată în video numărul de abonați”) și titlul în casete albe cu **emoji colorate**. Header-ul e desenat cu
+Pillow (fontul Montserrat + Segoe UI Emoji din Windows), pentru că subtitrările ASS nu pot afișa emoji color.
+Numărul de abonați se citește de pe YouTube și se reîmprospătează la câteva ore.
 
 ### Titluri-hook (AI local)
 
 Titlul de sus îl scrie un model AI care rulează **pe PC-ul tău** (Qwen3-4B-Instruct prin llama.cpp, pe procesor,
-ca placa video să rămână liberă pentru Whisper; ~5–13 s pe titlu, fără internet și fără cont). Modelul citește
+ca placa video să rămână liberă pentru Whisper; ~7–15 s pe titlu, fără internet și fără cont). Modelul citește
 transcriptul clipului și propune 3 variante după formule de hook (întrebare, „X face ceva neașteptat”, teasing
-fără să dea finalul) cu detalii concrete din clip – ex. *WHY DOES ISHOWSPEED GIVE JASON MEDS?*,
-*CE A FĂCUT IRAPHAHELL LA FINAL?*. Botul o alege pe cea mai specifică. Dacă modelul lipsește sau dă eroare,
-se folosește titlul euristic de dinainte. Se poate opri din `config.json` → `"ai_titles": false`.
+fără să dea finalul) cu detalii concrete din clip și 1–2 emoji potrivite – ex. *WHY DID DONNIE HIT THE LAMPPOST? 😱*,
+*CE ÎNSEAMNĂ SUGOI ÎN JAPONEZĂ? 🔥*. Botul o alege pe cea mai specifică. Dacă modelul lipsește sau dă eroare,
+se folosește titlul euristic, cu un emoji ales după clip (😂 râsete, 😱 țipete, 💰 bani, 👀 întrebări, 🔥 rest).
+Se poate opri din `config.json` → `"ai_titles": false`. Am comparat și cu Qwen3.5-4B și Qwen3.5-9B: 4B scria titluri
+prea lungi și cu greșeli în română, iar 9B era de 2.5× mai lent fără titluri mai bune, deci a rămas Qwen3-4B.
 
 ### Cenzură
 
@@ -171,6 +182,7 @@ Un PC nou pornește cu **totul oprit** (fără partajare, fără auto-scanare, f
 ## Setări utile (⚙ Setări)
 
 - **Sensibilitate live** (implicit 1.0): mai mare = mai multe clipuri din live, mai mică = doar momentele mari.
+- **Max clipuri live / oră**: 0 = nelimitat (implicit).
 - **Clipuri / video** și **Clipuri / stream lung**: câte clipuri scoate dintr-un VOD.
 - **Durată maximă clip**: implicit și maximum 50 s.
 - La fiecare streamer (✎): limba (EN/RO, pentru transcriere mai bună), culoarea, **încadrarea 9:16**

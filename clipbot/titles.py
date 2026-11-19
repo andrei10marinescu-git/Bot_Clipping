@@ -7,7 +7,7 @@ import threading
 import time
 import urllib.request
 
-from . import analysis
+from . import analysis, header
 from .config import LOG_DIR, MODELS_DIR, TOOLS_DIR, settings
 from .jobs import logger
 
@@ -31,7 +31,8 @@ Rules:
 - 3 to 8 words, spoken style, never reveal the punchline
 - create curiosity or tension; never a flat description like "X talks about ..." / "X shows ..." / "X explains ..."
 - only facts that are in the transcript, nothing invented
-- no emojis, no hashtags, no quotation marks, no swear words, no slurs
+- end every title with 1 or 2 emojis that match the emotion of the moment, e.g. 😱 🤯 😂 💀 🔥 😳 🚨 👀 😭 💰 🤬 ❤️
+- no hashtags, no quotation marks, no swear words, no slurs
 - do not write about "chat", "stream" or "viewers" unless that is what the clip is about
 - if the language is Romanian: natural, grammatically correct Romanian with diacritics
 
@@ -91,9 +92,35 @@ def _ensure_server() -> bool:
 
 
 def _clean(title: str) -> str:
-    t = re.sub(r"[^\w\s?!.,'’:&$%*-]", "", title, flags=re.UNICODE)
+    emojis = header.EMOJI_RE.findall(title)
+    t = header.EMOJI_RE.sub(" ", title)
+    t = re.sub(r"[^\w\s?!.,'’:&$%*-]", "", t, flags=re.UNICODE)
     t = re.sub(r"\s+", " ", t).strip(" .,:-'’\"")
-    return analysis.censor(t).upper()
+    t = analysis.censor(t).upper()
+    emo = "".join(list(dict.fromkeys(emojis))[:2])  # max 2 different emojis, always at the end
+    return f"{t} {emo}".strip()
+
+
+def _plain(title: str) -> str:
+    return re.sub(r"\s+", " ", header.EMOJI_RE.sub(" ", title)).strip()
+
+
+# Fallback emoji when the title has none: by what the clip sounds like.
+def ensure_emoji(title: str, text: str) -> str:
+    if not title or header.EMOJI_RE.search(title):
+        return title
+    low = text.lower()
+    if re.search(r"\b(ha(ha)+|lol|lmao|lmfao)\b|😂|🤣", low):
+        e = "😂"
+    elif re.search(r"\$|\bmoney\b|\bbani\b|\bdollars?\b|\bmillion\b", low):
+        e = "💰"
+    elif text.count("!") >= 3 or re.search(r"\b(oh my god|no way|what the|bro what|wtf|ce naiba|doamne)\b", low):
+        e = "😱"
+    elif title.endswith("?"):
+        e = "👀"
+    else:
+        e = "🔥"
+    return f"{title} {e}"
 
 
 _GENERIC = re.compile(r"\b(CHAT\w*|VIEWERS|STREAM\w*|EXPLOD\w*|INSANE MOMENT|MOMENTUL ACELUI|ON CAMERA|"
@@ -117,18 +144,21 @@ def _pick(options: list[str], streamer: str, transcript: str) -> str | None:
     best, best_score = None, -1e9
     for o in flat:
         t = _clean(o)
-        n = len(t.split())
-        if not 3 <= n <= 10 or len(t) > 60:
+        p = _plain(t)
+        n = len(p.split())
+        if not 3 <= n <= 10 or len(p) > 60:
             continue
-        specific = len(_specific(t) & words_in_clip)
-        score = -abs(n - 6) * 0.3 - max(0, len(t) - 46) * 0.2 + 1.0 * min(3, specific)
-        if streamer.split()[0].upper() in t:
+        specific = len(_specific(p) & words_in_clip)
+        score = -abs(n - 6) * 0.3 - max(0, len(p) - 46) * 0.2 + 1.0 * min(3, specific)
+        if streamer.split()[0].upper() in p:
             score += 0.4
-        if t.endswith(("?", "!", "...", "…")):
+        if p.endswith(("?", "!", "...", "…")):
             score += 0.7
-        if _GENERIC.search(t):
+        if header.EMOJI_RE.search(t):
+            score += 0.3
+        if _GENERIC.search(p):
             score -= 2.0
-        if _FLAT.search(t):
+        if _FLAT.search(p):
             score -= 1.2
         if score > best_score:
             best, best_score = t, score
@@ -176,7 +206,8 @@ def make_title(words: list[dict], peak_rel: float, lang: str | None, streamer: s
                reasons: list[str] | None = None, log=None) -> str:
     text = " ".join(w["word"] for w in words)
     title = ai_title(text, streamer, lang, source_title, log=log)
-    return title or analysis.censor(analysis.make_title(words, peak_rel, lang, streamer))
+    title = title or analysis.censor(analysis.make_title(words, peak_rel, lang, streamer))
+    return ensure_emoji(title, text)
 
 
 def shutdown() -> None:

@@ -10,3 +10,4 @@ onnxruntime-gpu[cuda,cudnn]>=1.21
 nvidia-cublas-cu12
 nvidia-cudnn-cu12==9.*
 huggingface_hub
+pillow>=11.0

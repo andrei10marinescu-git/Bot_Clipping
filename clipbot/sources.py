@@ -2,6 +2,7 @@
 
 import re
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import urljoin
@@ -322,6 +323,30 @@ def yt_live(channel: str) -> dict | None:
 def yt_info(url: str) -> dict:
     with yt_dlp.YoutubeDL(ydl_opts()) as y:
         return y.extract_info(url, download=False)
+
+
+_subs_cache: dict[str, tuple[float, int | None]] = {}
+
+
+def yt_subscribers(channel: str, max_age: float = 3 * 3600) -> int | None:
+    """Public subscriber count of a channel (YouTube rounds it to 3 digits), cached for a few hours."""
+    key = (channel or "").strip()
+    if not key:
+        return None
+    hit = _subs_cache.get(key)
+    if hit and time.time() - hit[0] < max_age:
+        return hit[1]
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts(extract_flat="in_playlist", playlistend=1)) as y:
+            n = y.extract_info(f"{yt_base(key)}/videos", download=False).get("channel_follower_count")
+    except Exception:  # noqa: BLE001 - keep the last known value when YouTube is unreachable
+        n = hit[1] if hit else None
+    _subs_cache[key] = (time.time(), n)
+    return n
+
+
+def cached_subscribers(channel: str) -> int | None:
+    return (_subs_cache.get((channel or "").strip()) or (0, None))[1]
 
 
 # ---------------------------------------------------------------- generic

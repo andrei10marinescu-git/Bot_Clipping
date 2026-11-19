@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import analysis, captions, framing
+from . import analysis, captions, framing, header
 from .config import FFMPEG, FFPROBE, ROOT, WORK_DIR, settings
 
 W, H = 1080, 1920
@@ -173,7 +173,7 @@ def _video_graph(frame: dict, fx: dict, fps: int, crop_sides: float, accent: str
 
 def render_clip(src: str, start: float, duration: float, words: list[dict], out_mp4: Path, *,
                 hook: str, name: str, credit: str, color: str, crop_sides: float = 0.0,
-                layout: str = "auto", language: str | None = None, log=None) -> dict:
+                layout: str = "auto", language: str | None = None, log=None, subs: str | None = None) -> dict:
     """Render [start, start+duration] of `src`. `words` must be relative to `start`."""
     out_mp4 = Path(out_mp4)
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
@@ -195,9 +195,15 @@ def render_clip(src: str, start: float, duration: float, words: list[dict], out_
             log(f"Layout: {frame['layout']} · cuvinte cheie: "
                 + ", ".join(w["word"] for w in words_fx if w["level"] >= 1)[:160])
 
+        header_png = None
+        try:
+            header_png = header.render(tmp / "header.png", hook, name, accent, pos, subs=subs)
+        except Exception as e:  # noqa: BLE001 - fall back to the plain ASS title
+            if log:
+                log(f"Header grafic indisponibil ({e}); folosesc titlul simplu.")
         ass_path = tmp / "captions.ass"
         cs = captions.build_ass(ass_path, words_fx, duration, hook=hook, name=name, credit=credit,
-                                accent=accent, layout=pos)
+                                accent=accent, layout=pos, header=header_png is not None)
         srt_path = out_mp4.with_suffix(".srt")
         captions.write_srt(srt_path, cs)
 
@@ -207,19 +213,29 @@ def render_clip(src: str, start: float, duration: float, words: list[dict], out_
             flash = f",eq=brightness='if(between(t,{f0},{f0 + 0.16:.2f}),0.42*(1-(t-{f0})/0.16),0)':eval=frame"
         bar = accent.lstrip("#") if len(accent.lstrip("#")) == 6 else "FFD400"
         rel_ass = ass_path.relative_to(ROOT).as_posix()
+        graph += f";[base]eq=contrast=1.05:saturation=1.12{flash},ass={rel_ass}:fontsdir=assets/fonts[txt];"
+        if header_png is not None:
+            graph += ("[1:v]format=rgba,fade=t=in:st=0:d=0.3:alpha=1[hdr];"
+                      "[txt][hdr]overlay=x=0:y=0:shortest=1[txh];")
+        else:
+            graph += "[txt]null[txh];"
         graph += (
-            f";[base]eq=contrast=1.05:saturation=1.12{flash},ass={rel_ass}:fontsdir=assets/fonts[txt];"
             f"color=c=0x{bar}:s={W}x12:r={fps}[bar];"
-            f"[txt][bar]overlay=x='-w+w*t/{duration:.3f}':y={H - 12}:shortest=1,format=yuv420p[v]"
+            f"[txh][bar]overlay=x='-w+w*t/{duration:.3f}':y={H - 12}:shortest=1,format=yuv420p[v]"
         )
         enc = pick_encoder()
+        fade_out = max(0.0, duration - 0.2)
 
         def build(encoder: str) -> list[str]:
             cmd = [FFMPEG, "-y", "-nostdin", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-                   "-i", str(src), "-filter_complex", graph, "-map", "[v]"]
+                   "-i", str(src)]
+            if header_png is not None:
+                cmd += ["-loop", "1", "-framerate", str(fps), "-t", f"{duration:.3f}", "-i", str(header_png)]
+            cmd += ["-filter_complex", graph, "-map", "[v]"]
             if info["has_audio"]:
                 cmd += ["-map", "0:a:0", "-af",
-                        "aresample=async=1:first_pts=0,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000",
+                        "aresample=async=1:first_pts=0,loudnorm=I=-14:TP=-1.5:LRA=11,"
+                        f"afade=t=out:st={fade_out:.3f}:d=0.2,aresample=48000",
                         "-c:a", "aac", "-b:a", "192k"]
             return cmd + _encoder_args(encoder) + ["-r", str(fps), "-movflags", "+faststart",
                                                    "-t", f"{duration:.3f}", str(out_mp4)]

@@ -249,9 +249,10 @@ def title_events(hook: str, name: str, duration: float, layout: dict, legacy: bo
 
 
 def build_ass(path: Path, words: list[dict], duration: float, *, hook: str, name: str, credit: str,
-              accent: str, layout: dict) -> list[list[dict]]:
-    header = ass_header(accent)
-    ev = title_events(hook, name, duration, layout)
+              accent: str, layout: dict, header: bool = False) -> list[list[dict]]:
+    """header=True: badge + title come from the PNG header overlay, the ASS file only has the captions."""
+    header_ass = ass_header(accent)
+    ev = [] if header else title_events(hook, name, duration, layout)
     if credit:
         ev.append(f"Dialogue: 0,0:00:00.00,{_ass_time(duration)},Credit,,0,0,0,,{{\\pos(540,{H - 34})}}{credit}")
 
@@ -289,7 +290,7 @@ def build_ass(path: Path, words: list[dict], duration: float, *, hook: str, name
                     parts.append(x["t"])
             pop = "{\\fscx78\\fscy78\\t(0,100,\\fscx100\\fscy100)}" if wi == 0 else ""
             ev.append(f"Dialogue: 1,{_ass_time(st)},{_ass_time(en)},Cap,,0,0,0,,{{\\pos(540,{cy})}}{pop}{' '.join(parts)}")
-    path.write_text(header + "\n".join(ev) + "\n", encoding="utf-8")
+    path.write_text(header_ass + "\n".join(ev) + "\n", encoding="utf-8")
     return cs
 
 

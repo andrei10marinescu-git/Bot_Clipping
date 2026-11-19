@@ -90,6 +90,22 @@ def audio_signal(db: np.ndarray) -> np.ndarray:
     return np.clip(z, -2, 6)
 
 
+def refine_peak(db: np.ndarray, hop: float, peak: float, before: float = 6.0, after: float = 3.0) -> float:
+    """Move a detected peak onto the actual loud reaction next to it (chat lags behind, smoothing blurs).
+
+    Only moves when that reaction clearly stands out, so chat-only moments (silent streamer) stay put.
+    """
+    sm = moving_avg(db, max(1, int(round(0.3 / hop))))
+    i0, i1 = max(0, int((peak - before) / hop)), min(len(sm), int((peak + after) / hop) + 1)
+    if i1 - i0 < 3:
+        return peak
+    ctx = sm[max(0, i0 - int(30 / hop)): i1]
+    med = float(np.median(ctx))
+    mad = float(np.median(np.abs(ctx - med))) * 1.4826 + 1.0
+    j = int(np.argmax(sm[i0:i1]))
+    return (i0 + j) * hop if (sm[i0 + j] - med) / mad >= 2.0 else peak
+
+
 def reaction_end(db: np.ndarray, peak: float, hop: float = HOP, max_after: float = 14.0) -> float:
     """When the reaction after `peak` calms down (loudness back near the local baseline)."""
     if len(db) == 0:
@@ -358,6 +374,8 @@ def choose_bounds(words: list[dict], peak: float, lo: float, hi: float,
     story = _story_start(inside_words, max(lo, peak - min(26.0, room - 2)), peak - 5)
     target_s = story if story is not None else max(lo, peak - min(16.0, room - 2))
     cand_s = [s for s in starts if max(lo, peak - (max_len - 4)) <= s <= peak - 4]
+    # Sparse speech: never stretch the clip far back just to reach a sentence start (long silent intros).
+    cand_s = [s for s in cand_s if abs(s - target_s) <= 6.0]
     start = min(cand_s, key=lambda s: abs(s - target_s)) if cand_s else target_s
     prev_end = max((w["end"] for w in inside_words if w["end"] <= start), default=lo)
     start = max(lo, prev_end + 0.02, start - 0.25) if cand_s else start
