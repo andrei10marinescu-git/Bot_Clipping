@@ -8,4 +8,5 @@ if not exist ".venv\Scripts\python.exe" (
 )
 set PYTHONIOENCODING=utf-8
 ".venv\Scripts\python.exe" run.py %*
-pause
+rem Keep the window open only if the bot stopped because of an error.
+if errorlevel 1 pause

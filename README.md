@@ -7,7 +7,10 @@ cu **transcript**, subtitrări sincronizate pe buze, accent pe cuvintele importa
 
 ## Pornire
 
-1. Dublu-click pe **`start.bat`** – se deschide singură interfața la <http://127.0.0.1:8765>.
+1. Dublu-click pe **`start.bat`** – se deschide o fereastră neagră (botul) și, singură, interfața la <http://127.0.0.1:8765>.
+   - Lasă fereastra neagră deschisă (o poți minimiza); **dacă o închizi, botul se oprește**.
+   - Dacă botul rulează deja, încă un dublu-click pe `start.bat` doar redeschide interfața.
+   - Interfața e o pagină web: o poți închide și redeschide oricând la <http://127.0.0.1:8765> fără să oprești botul.
 2. În interfață, fiecare streamer are **secțiunea lui** cu clipurile lui:
    - **⚡ Procesează cele mai noi** – ia cel mai nou video/stream neprocesat de pe fiecare platformă.
    - **🔎 Video recente** – listă cu ultimele video-uri YouTube + VOD-uri Kick; alegi ce să clipuiești.
