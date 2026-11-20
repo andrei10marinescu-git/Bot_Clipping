@@ -54,6 +54,7 @@ DEFAULT_SETTINGS = {
     "live_cooldown_seconds": 90,
     "live_sensitivity": 1.0,
     "live_max_clips_per_hour": 0,
+    "live_best_of_minutes": 12,
     "youtube_chat_replay_max_hours": 3,
     "output_fps": 30,
     "encoder": "auto",

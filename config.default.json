@@ -21,7 +21,8 @@
     "encoder": "auto",
     "share_lan": false,
     "share_internet": false,
-    "public_port": 8766
+    "public_port": 8766,
+    "live_best_of_minutes": 12
   },
   "streamers": [
     {
@@ -43,11 +44,14 @@
     {
       "id": "kaicenat",
       "name": "Kai Cenat",
-      "youtube": "@KaiCenat",
+      "youtube": "UCvCfpQXRXdJdL07pzTIA6Cw",
       "kick": "",
       "language": "en",
+      "color": "#53fc18",
       "crop_sides": 0.0,
-      "color": "#53fc18"
+      "layout": "auto",
+      "show_subs": false,
+      "cam_region": null
     },
     {
       "id": "iraphahell",
@@ -74,7 +78,15 @@
       "kick": "",
       "language": "en",
       "color": "#f9fbf9",
-      "crop_sides": 0.04
+      "crop_sides": 0.04,
+      "layout": "auto",
+      "show_subs": false,
+      "cam_region": [
+        1440.0,
+        645.0,
+        1920.0,
+        975.0
+      ]
     },
     {
       "id": "dylanpage",
@@ -84,7 +96,26 @@
       "language": "en",
       "color": "#ff7a1a",
       "crop_sides": 0.0,
-      "layout": "auto"
+      "layout": "auto",
+      "show_subs": false,
+      "cam_region": [
+        1314.0,
+        160.0,
+        1914.0,
+        496.0
+      ]
+    },
+    {
+      "id": "marlon",
+      "name": "Marlon",
+      "youtube": "UC7RNjS5nGShmMSuMcVgUyjQ",
+      "kick": "",
+      "language": "en",
+      "color": "#00c2ff",
+      "crop_sides": 0.0,
+      "layout": "auto",
+      "show_subs": false,
+      "cam_region": null
     }
   ]
 }

@@ -23,6 +23,8 @@ STALL_S = 60
 # A live moment is clipped once no stronger peak followed it for this long (or after the max wait).
 BURST_SETTLE_S = 30
 BURST_MAX_WAIT_S = 70
+# A moment this far above the stream's threshold is clipped right away instead of waiting for the window.
+GREAT_RATIO = 1.5
 HOP = analysis.HOP
 CHAT_REACTION_S = 3.0
 
@@ -151,6 +153,8 @@ class LiveMonitor(threading.Thread):
         self._score_hist: deque = deque(maxlen=int(1800 / HOP))
         self._settled_upto = 0
         self._pending: dict | None = None
+        self._pool: list[dict] = []
+        self._pool_since: float | None = None
 
     # chat ---------------------------------------------------------------
     def chat_sink(self, wall: float, text: str) -> None:
@@ -185,6 +189,7 @@ class LiveMonitor(threading.Thread):
             "threshold": round(self.threshold, 2),
             "started": self.started,
             "alive": self.is_alive(),
+            "pool": len(self._pool),
         }
 
     def _start_chat(self):
@@ -312,6 +317,10 @@ class LiveMonitor(threading.Thread):
             logger.exception("live monitor crashed")
         finally:
             self.stop()
+            try:
+                self._maybe_flush(force=True)  # the live ended: still pick the best of the last window
+            except Exception:  # noqa: BLE001
+                logger.exception("flush live moments")
             if not self.status.startswith(("eroare", "live terminat")):
                 self.status = "oprit"
             time.sleep(1)
@@ -347,6 +356,7 @@ class LiveMonitor(threading.Thread):
         self._detect()
 
     def _detect(self) -> None:
+        self._maybe_flush()
         cfg = settings()
         if self.timeline < 75:
             return
@@ -391,15 +401,46 @@ class LiveMonitor(threading.Thread):
         if p is None or (self.timeline - p["peak"] < BURST_SETTLE_S and self.timeline - p["seen"] < BURST_MAX_WAIT_S):
             return
         self._pending = None
+        cand = self._extract(p["peak"], p["val"], p["reasons"], threshold)
+        if cand is None:
+            return
+        self.last_clip_peak = p["peak"]
+        if cand["ratio"] >= GREAT_RATIO or float(cfg.get("live_best_of_minutes", 12)) <= 0:
+            self._submit([cand], exceptional=cand["ratio"] >= GREAT_RATIO)
+        else:
+            self._pool.append(cand)
+            self._pool_since = self._pool_since or time.time()
+            logger.info("live moment for %s pooled (%d in window)", self.streamer_id, len(self._pool))
+
+    def _maybe_flush(self, force: bool = False) -> None:
+        """Every few minutes only the best moment of the window becomes a clip (fewer, stronger clips)."""
+        if not self._pool:
+            return
+        window = float(settings().get("live_best_of_minutes", 12)) * 60
+        if force or time.time() - (self._pool_since or 0) >= window:
+            pool, self._pool, self._pool_since = self._pool, [], None
+            self._submit(pool)
+
+    def _submit(self, cands: list[dict], exceptional: bool = False) -> None:
         now = time.time()
         while self.clip_walls and self.clip_walls[0] < now - 3600:
             self.clip_walls.popleft()
-        cap = int(cfg.get("live_max_clips_per_hour") or 0)  # 0 = unlimited
+        cap = int(settings().get("live_max_clips_per_hour") or 0)  # 0 = unlimited
         if cap > 0 and len(self.clip_walls) >= cap:
+            for c in cands:
+                Path(c["raw"]).unlink(missing_ok=True)
             return
-        self.last_clip_peak = p["peak"]
         self.clip_walls.append(now)
-        self._extract(p["peak"], p["val"], p["reasons"], wall=now)
+        self.clips += 1
+        st = get_streamer(self.streamer_id) or {"name": self.streamer_id}
+        what = "moment uriaș" if exceptional else (
+            f"cel mai bun din {len(cands)} momente" if len(cands) > 1 else f"moment la {int(cands[0]['peak'])}s")
+        manager.submit(
+            "live", self.streamer_id, f"{st['name']} LIVE ({self.platform}) – {what}",
+            process_live_moments, self.streamer_id, cands, on_skip=lambda: self._release_slot(now),
+            lane="live", priority=1,
+        )
+        logger.info("live clip job for %s: %s", self.streamer_id, what)
 
     def _release_slot(self, wall: float) -> None:
         """A skipped moment must not use up one of the clips allowed per hour."""
@@ -408,13 +449,13 @@ class LiveMonitor(threading.Thread):
         except ValueError:
             pass
 
-    def _extract(self, peak: float, val: float, reasons: list[str], wall: float | None = None) -> None:
+    def _extract(self, peak: float, val: float, reasons: list[str], threshold: float) -> dict | None:
         max_len = float(settings()["max_clip_seconds"])
         s, e = max(0.0, peak - max(38.0, max_len - 4)), min(self.timeline, peak + 16)
         r_end = analysis.reaction_end(self.audio, peak, HOP, max_after=min(16.0, e - peak))
         segs = [g for g in self.segments if g["t1"] > s and g["t0"] < e]
         if not segs:
-            return
+            return None
         clip_dir = LIVE_DIR / "pending"
         clip_dir.mkdir(parents=True, exist_ok=True)
         stamp = f"{self.streamer_id}_{self.platform}_{int(time.time())}"
@@ -426,79 +467,96 @@ class LiveMonitor(threading.Thread):
         lst.unlink(missing_ok=True)
         if p.returncode != 0 or not raw.exists():
             logger.warning("live concat failed: %s", p.stderr[-300:])
-            return
-        self.clips += 1
-        st = get_streamer(self.streamer_id) or {"name": self.streamer_id}
+            return None
         started = self.info.get("started")
-        offset_in_stream = (self.started - started) if started else None
         src = {
             "platform": self.platform,
             "kind": "live",
             "id": str(self.info["id"]),
             "title": self.info.get("title") or "",
             "url": self.info.get("url"),
-            "stream_offset": offset_in_stream,
+            "stream_offset": (self.started - started) if started else None,
         }
-        manager.submit(
-            "live", self.streamer_id, f"{st['name']} LIVE ({self.platform}) – moment la {int(peak)}s",
-            process_live_clip, self.streamer_id, str(raw), segs[0]["t0"], peak, s, e, val, reasons, src, r_end,
-            on_skip=(lambda: self._release_slot(wall)) if wall is not None else None,
-            lane="live", priority=1,
-        )
-        logger.info("live clip queued for %s at %.1fs (score %.2f)", self.streamer_id, peak, val)
+        logger.info("live moment for %s at %.1fs (score %.2f, %.2fx threshold)", self.streamer_id, peak, val,
+                    val / max(threshold, 1e-6))
+        return {"raw": str(raw), "raw_offset": segs[0]["t0"], "peak": peak, "s": s, "e": e, "val": val,
+                "ratio": val / max(threshold, 1e-6), "reasons": reasons, "src": src, "r_end": r_end}
 
 
-def process_live_clip(job, streamer_id: str, raw: str, raw_offset: float, peak: float, s: float, e: float,
-                      sig: float, reasons: list[str], src: dict, react_end: float | None = None,
-                      on_skip=None) -> dict:
+def _evaluate_moment(job, st: dict, cfg: dict, c: dict) -> dict | None:
+    """Transcribe one live moment, cut it and score it; None when it is not worth a clip."""
+    raw, raw_offset, peak, sig = c["raw"], c["raw_offset"], c["peak"], c["val"]
+    react_end = c.get("r_end")
+    audio = transcribe.load_audio(raw)
+    raw_end = raw_offset + len(audio) / transcribe.SAMPLE_RATE
+    lang = st.get("language") or None
+    tr = transcribe.transcribe(audio, language=lang, offset=raw_offset)
+    lo, hi = max(c["s"], raw_offset), min(c["e"], raw_end)
+    fine = analysis.rms_db_series(raw, hop=0.1)
+    exact = raw_offset + analysis.refine_peak(fine, 0.1, peak - raw_offset)
+    if abs(exact - peak) >= 0.5:
+        job.log(f"Momentul exact e cu {exact - peak:+.1f}s față de detecție (reacția reală).")
+        peak = exact
+        react_end = max(react_end or 0.0, peak + 3.0)
+    start, end = analysis.choose_bounds(tr["words"], peak, lo, hi, cfg["min_clip_seconds"], main_clip_max(cfg),
+                                        react_end=react_end)
+    words = [w for w in tr["words"] if start - 1.0 <= w["start"] < end + 8.0]
+    spoken = [w for w in words if start <= w["start"] < end]
+    if len(spoken) < 4 and sig < 5:
+        job.log("Moment fără vorbire (muzică/cutscene) – sărit.")
+        return None
+    wps = len(spoken) / max(1.0, end - start)
+    if wps < 0.4 and sig < 6:
+        job.log(f"Prea puțină vorbire ({len(spoken)} cuvinte în {end - start:.0f}s) – sărit.")
+        return None
+    foreign = analysis.foreign_share(spoken, lang)
+    if foreign >= 0.65 and sig < 6.5:
+        job.log(f"Vorbesc mai ales personajele din joc/video (~{foreign:.0%} engleză), nu {st['name']} – sărit.")
+        return None
+    t_score, t_reasons = analysis.text_score(spoken, lang or tr["language"])
+    # How strongly it beat this stream's threshold, what is said (hype, laughs, exclamations) and how much is said.
+    rank = 2.0 * c["ratio"] + t_score + min(1.0, wps / 2.0) - 4.0 * max(0.0, foreign - 0.35)
+    src = c["src"]
+    if src.get("stream_offset") is not None:
+        src = dict(src, live_t=src["stream_offset"] + start)
+    cand = {"peak": peak, "start": start, "end": end, "words": words, "language": lang or tr["language"],
+            "score": sig + t_score, "reasons": ["🔴 Prins în LIVE"] + c["reasons"] + t_reasons}
+    return {"c": c, "cand": cand, "src": src, "raw_end": raw_end, "rank": rank,
+            "preview": " ".join(w["word"] for w in spoken)[:60]}
+
+
+def process_live_moments(job, streamer_id: str, cands: list[dict], on_skip=None) -> dict:
+    """Evaluate the moments of one window and render only the best one."""
     from . import pipeline
 
-    st = get_streamer(streamer_id)
+    st = get_streamer(streamer_id) or {"id": streamer_id, "name": streamer_id}
     cfg = settings()
     try:
-        job.set_progress(0.1, "Transcriu momentul din live…")
-        audio = transcribe.load_audio(raw)
-        raw_end = raw_offset + len(audio) / transcribe.SAMPLE_RATE
-        lang = st.get("language") or None
-        tr = transcribe.transcribe(audio, language=lang, offset=raw_offset)
-        lo, hi = max(s, raw_offset), min(e, raw_end)
-        fine = analysis.rms_db_series(raw, hop=0.1)
-        exact = raw_offset + analysis.refine_peak(fine, 0.1, peak - raw_offset)
-        if abs(exact - peak) >= 0.5:
-            job.log(f"Momentul exact e cu {exact - peak:+.1f}s față de detecție (reacția reală).")
-            peak = exact
-            react_end = max(react_end or 0.0, peak + 3.0)
-        start, end = analysis.choose_bounds(tr["words"], peak, lo, hi, cfg["min_clip_seconds"], main_clip_max(cfg),
-                                            react_end=react_end)
-        words = [w for w in tr["words"] if start - 1.0 <= w["start"] < end + 8.0]
-        spoken = [w for w in words if start <= w["start"] < end]
-        if len(spoken) < 4 and sig < 5:
-            job.log("Moment fără vorbire (muzică/cutscene) – sărit.")
+        evaluated = []
+        for i, c in enumerate(cands):
+            job.check()
+            job.set_progress(0.05 + 0.45 * i / len(cands), f"Analizez momentul {i + 1}/{len(cands)} (la {int(c['peak'])}s)…")
+            ev = _evaluate_moment(job, st, cfg, c)
+            if ev:
+                evaluated.append(ev)
+        if not evaluated:
+            job.log("Niciun moment destul de bun – nu fac clip.")
             if on_skip:
                 on_skip()
             return {"clip": None, "skipped": True}
-        if len(spoken) / max(1.0, end - start) < 0.4 and sig < 6:
-            job.log(f"Prea puțină vorbire ({len(spoken)} cuvinte în {end - start:.0f}s) – sărit.")
-            if on_skip:
-                on_skip()
-            return {"clip": None, "skipped": True}
-        foreign = analysis.foreign_share(spoken, lang)
-        if foreign >= 0.65 and sig < 6.5:
-            job.log(f"Vorbesc mai ales personajele din joc/video (~{foreign:.0%} engleză), nu {st['name']} – sărit.")
-            if on_skip:
-                on_skip()
-            return {"clip": None, "skipped": True}
-        t_score, t_reasons = analysis.text_score(spoken, lang or tr["language"])
-        if src.get("stream_offset") is not None:
-            src = dict(src, live_t=src["stream_offset"] + start)
-        cand = {"peak": peak, "start": start, "end": end, "words": words, "language": lang or tr["language"],
-                "score": sig + t_score, "reasons": ["🔴 Prins în LIVE"] + reasons + t_reasons}
-        job.set_progress(0.5, "Aliniez cuvintele + randez clipul…")
-        clip = pipeline.finalize_clip(st, src, Path(raw), raw_offset, cand, log=job.log, raw_end=raw_end)
+        evaluated.sort(key=lambda e: e["rank"], reverse=True)
+        best = evaluated[0]
+        if len(cands) > 1:
+            job.log("Clasament: " + " | ".join(f"{int(e['c']['peak'])}s → {e['rank']:.1f} („{e['preview']}…”)"
+                                                for e in evaluated[:4]))
+        job.set_progress(0.55, "Aliniez cuvintele + randez cel mai bun moment…")
+        clip = pipeline.finalize_clip(st, best["src"], Path(best["c"]["raw"]), best["c"]["raw_offset"], best["cand"],
+                                      log=job.log, raw_end=best["raw_end"])
         job.log(f"Clip live gata ({clip['duration']:.0f}s).")
         return {"clip": clip["id"]}
     finally:
-        Path(raw).unlink(missing_ok=True)
+        for c in cands:
+            Path(c["raw"]).unlink(missing_ok=True)
 
 
 # --------------------------------------------------------------------------- manager

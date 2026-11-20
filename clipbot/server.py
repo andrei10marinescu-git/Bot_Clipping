@@ -28,6 +28,7 @@ SETTING_LIMITS = {
     "live_cooldown_seconds": (20, 1800),
     "live_sensitivity": (0.3, 5.0),
     "live_max_clips_per_hour": (0, 60),
+    "live_best_of_minutes": (0, 60),
     "youtube_chat_replay_max_hours": (0, 24),
     "output_fps": (24, 60),
 }

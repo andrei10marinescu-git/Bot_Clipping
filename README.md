@@ -1,6 +1,6 @@
 # ClipBot – clipuri automate de la streameri (YouTube + Kick)
 
-Bot local care urmărește **IShowSpeed, Kai Cenat, iRaphahell, Adin Ross, Jynxzi și Dylan Page** (YouTube; Kick unde au canal),
+Bot local care urmărește **IShowSpeed, Kai Cenat (Kai Cenat Live), iRaphahell, Adin Ross, Jynxzi, Dylan Page și Marlon** (YouTube; Kick unde au canal),
 găsește singur momentele cele mai interesante (din VOD-uri/video-uri **și din live-uri în timp real**)
 și le transformă în clipuri verticale 9:16 (TikTok / Shorts / Reels) de **maximum 50 de secunde**,
 cu **transcript**, subtitrări sincronizate pe buze, accent pe cuvintele importante și efecte.
@@ -62,8 +62,14 @@ primele 5 secunde, nu se mai adaugă. Se poate opri din `config.json` → `"cold
 
 **În live**, botul nu taie la primul vârf: așteaptă să se termine „valul” de reacție (până la ~70 s) și ia vârful cel mai
 puternic din el. Apoi caută, la 0.1 s precizie, reacția reală din audio din jurul lui (chat-ul reacționează cu câteva
-secunde întârziere) și centrează clipul pe ea. Nu există limită de clipuri pe oră (`Max clipuri live / oră` = 0);
-între două clipuri ale aceluiași live sunt minimum 90 s. Sunt sărite momentele aproape fără vorbire (dacă reacția
+secunde întârziere) și centrează clipul pe ea. Între două momente ale aceluiași live sunt minimum 90 s.
+
+**Mai puține clipuri, dar cele mai bune:** momentele detectate nu devin imediat clip. Botul le strânge într-o fereastră de
+**12 minute** (`Live: cel mai bun moment din fiecare` în ⚙ Setări; 0 = toate devin clipuri), apoi le transcrie pe toate,
+le compară și face clip **doar din cel mai bun**. Scorul ține cont cât de tare a depășit momentul pragul acelui stream
+(reacție + explozie de chat), ce se spune (cuvinte de hype, râsete, exclamații) și cât se vorbește. Un moment uriaș
+(peste 1.5× pragul) se face clip imediat. Clasamentul apare în log-ul jobului, în Activitate. Fără limită fixă pe oră
+(`Max clipuri live / oră` = 0). Sunt sărite momentele aproape fără vorbire (dacă reacția
 nu e uriașă) și, la streamerii pe română, cele în care vorbesc aproape doar personajele din joc/video (în engleză,
 ex. cutscene-uri GTA); la VOD-uri acestea sunt depunctate.
 Dacă înregistrarea live rămâne blocată (ex. după o cădere de internet), botul o repornește singur după 60 s fără date noi.
@@ -90,7 +96,7 @@ Pe Hugging Face modelul cere un cont gratuit: pe pagina lui apeși *Agree*, îț
 | Layout | Când | Cum arată |
 |---|---|---|
 | **Split** | facecam peste joc (Jynxzi, Speed pe Fortnite, iRaphahell) | bandă de titlu sus, facecam-ul (marginile detectate automat), jocul jos |
-| **Crop** | față mare / IRL / podcast (Kai Cenat, Speed IRL) | cadru 9:16 pe toată înălțimea care urmărește fața lin |
+| **Crop** | față mare / IRL / podcast (Speed IRL) | cadru 9:16 pe toată înălțimea care urmărește fața lin |
 | **Blur** | fără față clară | tot cadrul + fundal blurat |
 
 Se alege automat (detectare fețe YuNet), sau îl fixezi la streamer (✎ → „Încadrare 9:16”).
@@ -100,6 +106,8 @@ sus la layout-ul split, cu tot cu overlay-urile de lângă cameră. La IShowSpee
 vizualizatori live de deasupra + **contorul live de abonați** de dedesubt. Panoul camerei își ia înălțimea după zonă,
 zoom-ul punch trece pe joc (ca să nu taie contoarele), iar zona se folosește doar când fața chiar e în ea
 (la stream-urile IRL rămâne detectarea automată). În panoul cu jocul nu mai intră bucăți din cameră.
+Setate: IShowSpeed `0,436,390,738`, Jynxzi `1440,645,1920,975` (camera lui fără chenar din dreapta-jos; jocul se vede
+mare dedesubt), Dylan Page `1314,160,1914,496` (tot overlay-ul cu ambii, nu doar o față mărită).
 
 **Accent pe cuvintele importante:** cuvântul spus acum e galben; ~14% din cuvinte (cele de hype, sume/numere,
 nume, cuvinte strigate, exclamații, cuvinte rare) sunt **verzi**, iar cele țipate **roșii**. Cuvântul cel mai puternic

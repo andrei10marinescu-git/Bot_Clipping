@@ -14,6 +14,7 @@ const SETTINGS_FIELDS = [
   ["max_clip_seconds", "Durată maximă clip (s, max 50)", 1],
   ["min_clip_seconds", "Durată minimă clip (s)", 1],
   ["live_sensitivity", "Sensibilitate live (0.3 – 5)", 0.1],
+  ["live_best_of_minutes", "Live: cel mai bun moment din fiecare (min, 0 = toate)", 1],
   ["live_cooldown_seconds", "Pauză între clipuri live (s)", 5],
   ["live_max_clips_per_hour", "Max clipuri live / oră (0 = nelimitat)", 1],
   ["live_check_interval_seconds", "Verificare live la fiecare (s)", 10],
@@ -169,7 +170,7 @@ function renderSections() {
     const mons = (s.live && s.live.monitors) || [];
     $("[data-monitor]", sec).innerHTML = mons.map((m) => `
       <div class="m">🎥 <b>${m.platform === "kick" ? "Kick" : "YouTube"}</b> · ${esc(m.status)} · înregistrat ${fmtTime(m.recorded)}
-        · chat ${m.chat_per_min}/min · hype ${m.score} / prag ${m.threshold ?? "–"} · <b>${m.clips}</b> clipuri</div>`).join("")
+        · chat ${m.chat_per_min}/min · hype ${m.score} / prag ${m.threshold ?? "–"} · <b>${m.clips}</b> clipuri${m.pool ? ` · ${m.pool} momente în selecție` : ""}</div>`).join("")
       || (s.live && s.live.watching ? `<div class="m">👀 Aștept să intre live…</div>` : "");
   }
   // keep section order identical to config (only touch the DOM if it differs, moving would pause videos)
@@ -359,7 +360,7 @@ function showSettings() {
   const s = state.settings;
   $("#settingsForm").innerHTML = SETTINGS_FIELDS.map(([k, label, step]) =>
     `<label>${esc(label)}<input name="${k}" type="number" step="${step}" value="${esc(s[k])}"></label>`).join("")
-    + `<p class="hint">Sensibilitate live mai mare = mai multe clipuri (prag mai mic). Clipurile au mereu maximum 50 de secunde.</p>`;
+    + `<p class="hint">Sensibilitate live mai mare = mai multe clipuri (prag mai mic). Din live se face doar cel mai bun moment din fiecare fereastră de N minute (momentele uriașe imediat). Clipurile au mereu maximum 50 de secunde.</p>`;
   openModal("settingsModal");
 }
 
