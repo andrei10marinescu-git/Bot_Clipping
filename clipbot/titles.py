@@ -1,5 +1,6 @@
 """Hook titles written by a local LLM (llama.cpp + Qwen3-4B-Instruct, runs on this PC), with a heuristic fallback."""
 
+import difflib
 import json
 import re
 import subprocess
@@ -21,20 +22,28 @@ _failed_until = 0.0
 SYSTEM = """You write titles for viral YouTube Shorts / TikTok clips cut from livestreams and videos.
 A great title makes people stop scrolling and watch to the end, and it is SPECIFIC to the clip.
 
-Hook formulas - fill them with concrete details from THIS transcript (a name, object, number, place, food,
-game, animal, action...). Every title MUST contain at least one such concrete detail:
-1. a question about the strange or surprising thing (why / what / how ...?)
-2. the streamer + the unexpected thing he/she does or says
-3. a tease of the outcome without revealing it (... and then it went wrong / nobody expected the ending)
+The title is ONE short, punchy statement - never a question. It sounds like a friend shouting the news at you,
+it builds tension and makes you need to see it happen. Use concrete details from THIS transcript (a name, object,
+number, place, food, game, animal, action...). Every title MUST contain at least one such concrete detail.
+
+Hook formulas:
+1. the streamer + the crazy / unexpected thing he does or that happens to him, told as breaking news
+   (e.g. "SPEED ALMOST GETS ARRESTED IN GTA 6!", "KAI LOSES HIS MIND OVER A CHICKEN!")
+2. a tease that promises a payoff without revealing it
+   (e.g. "WAIT FOR WHAT JYNXZI DOES WITH THE DOG!", "THE ENDING WITH THE COPS IS INSANE!")
+3. extreme emotion or stakes in the moment
+   (e.g. "DYLAN GOT DESTROYED BY BIGFOOT!", "THIS $5 TOLL MADE SPEED RAGE!")
 
 Rules:
-- 3 to 8 words, spoken style, never reveal the punchline
-- create curiosity or tension; never a flat description like "X talks about ..." / "X shows ..." / "X explains ..."
+- 4 to 9 words, spoken style, never reveal the punchline
+- no question marks, no "why / what / how" questions; end with "!" and then 1 or 2 emojis that match the
+  emotion, e.g. 😱 🤯 😂 💀 🔥 😳 🚨 😭 💰 🤬 ⚠️
+- never a flat description like "X talks about ..." / "X shows ..." / "X explains ..."
 - only facts that are in the transcript, nothing invented
-- end every title with 1 or 2 emojis that match the emotion of the moment, e.g. 😱 🤯 😂 💀 🔥 😳 🚨 👀 😭 💰 🤬 ❤️
 - no hashtags, no quotation marks, no swear words, no slurs
 - do not write about "chat", "stream" or "viewers" unless that is what the clip is about
 - if the language is Romanian: natural, grammatically correct Romanian with diacritics
+  (e.g. "RAPHAEL A FURAT DUBA GREȘITĂ!", "STAI SĂ VEZI CE FACE CU MAȘINA!")
 
 Reply with JSON only:
 {"moment": "<one sentence: what concretely happens in the clip>", "titles": ["...", "...", "..."]}
@@ -97,6 +106,10 @@ def _clean(title: str) -> str:
     t = re.sub(r"[^\w\s?!.,'’:&$%*-]", "", t, flags=re.UNICODE)
     t = re.sub(r"\s+", " ", t).strip(" .,:-'’\"")
     t = analysis.censor(t).upper()
+    if t.endswith("?"):
+        t = t.rstrip("?").rstrip() + "!"
+    elif t and not t.endswith(("!", "…", "...")):
+        t += "!"
     emo = "".join(list(dict.fromkeys(emojis))[:2])  # max 2 different emojis, always at the end
     return f"{t} {emo}".strip()
 
@@ -116,11 +129,15 @@ def ensure_emoji(title: str, text: str) -> str:
         e = "💰"
     elif text.count("!") >= 3 or re.search(r"\b(oh my god|no way|what the|bro what|wtf|ce naiba|doamne)\b", low):
         e = "😱"
-    elif title.endswith("?"):
-        e = "👀"
     else:
         e = "🔥"
     return f"{title} {e}"
+
+
+# Titles are statements, not questions.
+_QUESTION = re.compile(r"^(WHY|WHAT|HOW|WHO|WHEN|WHERE|IS|ARE|DID|DOES|CAN|WOULD|DE CE|CE|CUM|CINE|UNDE|CÂND|CAND)\b")
+# Distinctive words of the prompt examples: a title using them without the transcript saying so copied the example.
+_EXAMPLE_WORDS = {"ARRESTED", "CHICKEN", "DOG", "COPS", "BIGFOOT", "TOLL", "RAGE", "DUBA", "MAȘINA", "DESTROYED"}
 
 
 _GENERIC = re.compile(r"\b(CHAT\w*|VIEWERS|STREAM\w*|EXPLOD\w*|INSANE MOMENT|MOMENTUL ACELUI|ON CAMERA|"
@@ -138,22 +155,42 @@ def _specific(text: str) -> set[str]:
     return {w for w in re.findall(r"\w{4,}", text.upper())} - _STOP
 
 
+def _fix_name(title: str, streamer: str) -> str:
+    """The model sometimes misspells the streamer (IRAPHAEHELL): snap near-misses back to the real name."""
+    name = streamer.upper().replace(" ", "")
+    out = []
+    for tok in title.split(" "):
+        core = re.sub(r"[^\w'’]", "", tok)
+        m = re.match(r"^(\w+?)('S|’S)?$", core) if core else None
+        base = m.group(1) if m else core
+        if len(base) >= 5 and base != name and difflib.SequenceMatcher(None, base, name).ratio() >= 0.8:
+            tok = tok.replace(base, name)
+        out.append(tok)
+    return " ".join(out)
+
+
 def _pick(options: list[str], streamer: str, transcript: str) -> str | None:
     words_in_clip = _specific(transcript) - set(streamer.upper().split())
     flat = [part for o in options for part in re.split(r"\s+/\s+|\s*\|\s*", str(o)) if part.strip()]
     best, best_score = None, -1e9
     for o in flat:
-        t = _clean(o)
+        raw_q = "?" in str(o)
+        t = _fix_name(_clean(o), streamer)
         p = _plain(t)
         n = len(p.split())
-        if not 3 <= n <= 10 or len(p) > 60:
+        if not 3 <= n <= 11 or len(p) > 62:
             continue
         specific = len(_specific(p) & words_in_clip)
-        score = -abs(n - 6) * 0.3 - max(0, len(p) - 46) * 0.2 + 1.0 * min(3, specific)
+        score = -abs(n - 6.5) * 0.3 - max(0, len(p) - 48) * 0.2 + 1.0 * min(3, specific)
         if streamer.split()[0].upper() in p:
-            score += 0.4
-        if p.endswith(("?", "!", "...", "…")):
+            score += 0.8
+        if p.endswith("!") and not raw_q:
             score += 0.7
+        if raw_q or _QUESTION.search(p):
+            score -= 3.0
+        copied = {w for w in re.findall(r"\w+", p)} & _EXAMPLE_WORDS
+        if copied - set(re.findall(r"\w+", transcript.upper())):
+            score -= 2.0
         if header.EMOJI_RE.search(t):
             score += 0.3
         if _GENERIC.search(p):
@@ -206,7 +243,9 @@ def make_title(words: list[dict], peak_rel: float, lang: str | None, streamer: s
                reasons: list[str] | None = None, log=None) -> str:
     text = " ".join(w["word"] for w in words)
     title = ai_title(text, streamer, lang, source_title, log=log)
-    title = title or analysis.censor(analysis.make_title(words, peak_rel, lang, streamer))
+    if not title:  # heuristic fallback, shaped like the AI titles: a statement ending in "!"
+        title = analysis.censor(analysis.make_title(words, peak_rel, lang, streamer)).strip().rstrip("?.").strip()
+        title = title if title.endswith(("!", "…")) else title + "!"
     return ensure_emoji(title, text)
 
 

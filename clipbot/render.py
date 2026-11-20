@@ -189,9 +189,14 @@ def plan_teaser(fx: dict, duration: float) -> list[tuple[float, float]]:
     return [s for s in snips if s[1] - s[0] >= 0.6]
 
 
+REWIND_TEXT = {"ro": "⏪ CU CÂTEVA SECUNDE ÎNAINTE…", "en": "⏪ MOMENTS EARLIER…"}
+
+
 def _compose_cold_open(main_mp4: Path, out_mp4: Path, snips: list[tuple[float, float]], duration: float,
-                       fps: int, accent: str, has_audio: bool, log=None) -> float:
-    """Final video = teaser snippets cut from the rendered clip + the whole clip, flash cuts, one progress bar."""
+                       fps: int, accent: str, has_audio: bool, log=None, language: str | None = None,
+                       badge_y: int | None = None, tmp: Path | None = None) -> float:
+    """Final video = teaser snippets cut from the rendered clip + the whole clip, flash cuts with a whoosh,
+    a '⏪ moments earlier' sticker when the story restarts, and one progress bar."""
     teaser = sum(b - a for a, b in snips)
     total = teaser + duration
     inputs, parts, graph = [], [], []
@@ -215,15 +220,44 @@ def _compose_cold_open(main_mp4: Path, out_mp4: Path, snips: list[tuple[float, f
     flash = "+".join(f"if(between(t,{c:.3f},{c + 0.12:.3f}),0.45*(1-(t-{c:.3f})/0.12),0)" for c in cuts)
     bar = accent.lstrip("#") if len(accent.lstrip("#")) == 6 else "FFD400"
     graph.append(f"[cv]eq=brightness='{flash}':eval=frame[cf]")
+    last = "cf"
+    n_in = m + 1
+    badge = None
+    if tmp is not None and badge_y is not None:
+        try:
+            badge = header.render_badge(tmp / "rewind.png", REWIND_TEXT.get(language or "", REWIND_TEXT["en"]))
+        except Exception:  # noqa: BLE001 - the sticker is a bonus
+            badge = None
+    if badge:
+        bpath, bw, bh = badge
+        inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{total:.3f}", "-i", str(bpath)]
+        T = teaser
+        y0 = int(badge_y - bh / 2)
+        graph.append(f"[{n_in}:v]format=rgba,fade=t=in:st={T:.3f}:d=0.15:alpha=1,"
+                     f"fade=t=out:st={T + 2.1:.3f}:d=0.3:alpha=1[bd]")
+        graph.append(f"[{last}][bd]overlay=x=(W-w)/2:y='{y0}-40*max(0,1-(t-{T:.3f})/0.2)':"
+                     f"enable='between(t,{T:.3f},{T + 2.45:.3f})':shortest=1[cb]")
+        last = "cb"
+        n_in += 1
     graph.append(f"color=c=0x{bar}:s={W}x12:r={fps}[bar]")
-    graph.append(f"[cf][bar]overlay=x='-w+w*t/{total:.3f}':y={H - 12}:shortest=1,format=yuv420p[v]")
+    graph.append(f"[{last}][bar]overlay=x='-w+w*t/{total:.3f}':y={H - 12}:shortest=1,format=yuv420p[v]")
+    if has_audio:
+        # Whoosh on every cut: pink noise band-passed with a fast swell, peaking right on the cut.
+        inputs += ["-f", "lavfi", "-t", "0.5", "-i", "anoisesrc=d=0.5:c=pink:a=0.6:r=48000"]
+        graph.append(f"[{n_in}:a]highpass=f=500,lowpass=f=4000,afade=t=in:d=0.22,afade=t=out:st=0.24:d=0.26,"
+                     f"volume=0.55,asplit={len(cuts)}" + "".join(f"[w{i}]" for i in range(len(cuts))))
+        for i, c in enumerate(cuts):
+            graph.append(f"[w{i}]adelay={max(0, int((c - 0.24) * 1000))}:all=1[wd{i}]")
+        graph.append("[ca]" + "".join(f"[wd{i}]" for i in range(len(cuts)))
+                     + f"amix=inputs={len(cuts) + 1}:duration=first:normalize=0[am]")
     enc = pick_encoder()
 
     def build(encoder: str) -> list[str]:
         cmd = [FFMPEG, "-y", "-nostdin", "-v", "error", *inputs, "-filter_complex", ";".join(graph), "-map", "[v]"]
         if has_audio:
-            cmd += ["-map", "[ca]", "-c:a", "aac", "-b:a", "192k"]
-        return cmd + _encoder_args(encoder) + ["-r", str(fps), "-movflags", "+faststart", str(out_mp4)]
+            cmd += ["-map", "[am]", "-c:a", "aac", "-b:a", "192k"]
+        return cmd + _encoder_args(encoder) + ["-r", str(fps), "-movflags", "+faststart", "-t", f"{total:.3f}",
+                                               str(out_mp4)]
 
     proc = subprocess.run(build(enc), cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0 and enc == "h264_nvenc":
@@ -232,7 +266,8 @@ def _compose_cold_open(main_mp4: Path, out_mp4: Path, snips: list[tuple[float, f
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg cold open failed: {proc.stderr[-1500:]}")
     if log:
-        log(f"Început cu acțiune: {len(snips)} secvențe ({teaser:.1f}s), apoi clipul întreg.")
+        log(f"Început cu acțiune: {len(snips)} secvențe ({teaser:.1f}s) + whoosh"
+            + (" + „moments earlier”" if badge else "") + ", apoi clipul întreg.")
     return teaser
 
 
@@ -328,7 +363,8 @@ def render_clip(src: str, start: float, duration: float, words: list[dict], out_
         teaser = 0.0
         t_thumb = min(max(0.5, (fx.get("peak") or duration / 2) + 0.3), max(0.5, duration - 0.5))
         if snips:
-            teaser = _compose_cold_open(main_mp4, out_mp4, snips, duration, fps, accent, info["has_audio"], log)
+            teaser = _compose_cold_open(main_mp4, out_mp4, snips, duration, fps, accent, info["has_audio"], log,
+                                        language=language, badge_y=min(H - 170, int(pos["caption_y"]) + 150), tmp=tmp)
             # SRT of the final video: teaser words re-timed, then the whole clip shifted.
             tw, t0 = [], 0.0
             for a, b in snips:

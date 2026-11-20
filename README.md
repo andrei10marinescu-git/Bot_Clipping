@@ -50,15 +50,17 @@ Butonul **🌐 Partajează** (sus în panou) pornește o **galerie separată, do
 
 Pentru fiecare vârf candidat, botul transcrie ~1 minut în jur (Whisper `large-v3-turbo` pe GPU) și construiește clipul
 ca **setup → reacție**: începe la începutul schimbului de replici care duce la moment (după ultima pauză clară, până la
-~26 s înainte) și se termină imediat după ce reacția se calmează. Clipul are **minimum 20 s** (dacă e mai scurt,
+~18 s înainte, altfel ~12 s – faza trebuie să vină repede) și se termină imediat după ce reacția se calmează. Clipul are **minimum 20 s** (dacă e mai scurt,
 lasă reacția să ruleze mai mult) și maximum 50 s cu tot cu începutul. Tăieturile cad mereu pe margini de propoziție.
 Candidații se notează pe tot clipul (hype susținut, densitatea vorbirii, unde cade momentul), iar cei slabi
 sunt aruncați – mai bine 2 clipuri foarte bune decât 4 mediocre.
 
 **Început cu acțiune (cold open):** primele ~2–3.5 secunde ale fiecărui clip sunt o secvență scurtă cu cele mai
-puternice momente din el (reacția principală și, dacă există, încă o reacție puternică), cu flash între ele, apoi clipul
-pornește de la setup. Cine dă scroll vede direct acțiunea și rămâne să afle ce s-a întâmplat. Dacă acțiunea e deja în
-primele 5 secunde, nu se mai adaugă. Se poate opri din `config.json` → `"cold_open": false`.
+puternice momente din el (reacția principală și, dacă există, încă o reacție puternică), cu flash + **whoosh** la fiecare
+tăietură. Când clipul repornește de la setup, apare 2.5 s un sticker galben animat **„⏪ MOMENTS EARLIER…”**
+(„⏪ CU CÂTEVA SECUNDE ÎNAINTE…” la streamerii pe română), ca să fie clar că urmează povestea. Cine dă scroll vede
+direct acțiunea și rămâne să afle cum s-a ajuns acolo. Dacă acțiunea e deja în primele 5 secunde, nu se mai adaugă.
+Se poate opri din `config.json` → `"cold_open": false`.
 
 **În live**, botul nu taie la primul vârf: așteaptă să se termine „valul” de reacție (până la ~70 s) și ia vârful cel mai
 puternic din el. Apoi caută, la 0.1 s precizie, reacția reală din audio din jurul lui (chat-ul reacționează cu câteva
@@ -125,10 +127,12 @@ Numărul de abonați se citește de pe YouTube și se reîmprospătează la cât
 
 Titlul de sus îl scrie un model AI care rulează **pe PC-ul tău** (Qwen3-4B-Instruct prin llama.cpp, pe procesor,
 ca placa video să rămână liberă pentru Whisper; ~7–15 s pe titlu, fără internet și fără cont). Modelul citește
-transcriptul clipului și propune 3 variante după formule de hook (întrebare, „X face ceva neașteptat”, teasing
-fără să dea finalul) cu detalii concrete din clip și 1–2 emoji potrivite – ex. *WHY DID DONNIE HIT THE LAMPPOST? 😱*,
-*CE ÎNSEAMNĂ SUGOI ÎN JAPONEZĂ? 🔥*. Botul o alege pe cea mai specifică. Dacă modelul lipsește sau dă eroare,
-se folosește titlul euristic, cu un emoji ales după clip (😂 râsete, 😱 țipete, 💰 bani, 👀 întrebări, 🔥 rest).
+transcriptul clipului și propune 3 variante: **o singură propoziție-afirmație, fără întrebări**, spusă ca o știre
+care te ține captivat, terminată cu „!” și 1–2 emoji – „streamerul + ce face/pățește” („KAI SCREAMS AT GTA 6'S FOOD
+COUNT! 🔥😱”), teasing fără să dea finalul („WAIT FOR WHAT … !”) sau emoție/miză. Botul o alege pe cea mai specifică
+(detalii din clip, cu numele streamerului), depunctează orice întrebare și corectează numele streamerului scris greșit.
+Dacă modelul lipsește sau dă eroare, se folosește titlul euristic, tot cu „!” și un emoji ales după clip
+(😂 râsete, 😱 țipete, 💰 bani, 🔥 rest).
 Se poate opri din `config.json` → `"ai_titles": false`. Am comparat și cu Qwen3.5-4B și Qwen3.5-9B: 4B scria titluri
 prea lungi și cu greșeli în română, iar 9B era de 2.5× mai lent fără titluri mai bune, deci a rămas Qwen3-4B.
 

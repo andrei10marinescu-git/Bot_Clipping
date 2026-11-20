@@ -370,9 +370,10 @@ def choose_bounds(words: list[dict], peak: float, lo: float, hi: float,
     starts, ends = _boundaries(inside_words)
     target_e = min(peak + 14, max(peak + 3, react_end if react_end is not None else peak + 8))
     room = max_len - (target_e - peak)
-    # Prefer the whole exchange that leads to the moment (up to ~26 s of setup), else ~16 s of context.
-    story = _story_start(inside_words, max(lo, peak - min(26.0, room - 2)), peak - 5)
-    target_s = story if story is not None else max(lo, peak - min(16.0, room - 2))
+    # Prefer the whole exchange that leads to the moment (up to ~18 s of setup), else ~12 s of context:
+    # viewers drop off when the payoff takes too long to arrive.
+    story = _story_start(inside_words, max(lo, peak - min(18.0, room - 2)), peak - 5)
+    target_s = story if story is not None else max(lo, peak - min(12.0, room - 2))
     cand_s = [s for s in starts if max(lo, peak - (max_len - 4)) <= s <= peak - 4]
     # Sparse speech: never stretch the clip far back just to reach a sentence start (long silent intros).
     cand_s = [s for s in cand_s if abs(s - target_s) <= 6.0]

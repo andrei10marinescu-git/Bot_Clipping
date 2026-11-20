@@ -125,6 +125,26 @@ def format_count(n: int) -> str:
     return str(n)
 
 
+def render_badge(out_png: Path, text: str, fill: str = "#FFD400", text_fill: str = "#111111",
+                 fs: int = 46) -> tuple[Path, int, int]:
+    """A single rounded sticker (e.g. '⏪ MOMENTS EARLIER…') with a soft shadow. Returns (path, width, height)."""
+    ts = _Typeset(fs)
+    pad_x, pad_y = int(fs * 0.55), int(fs * 0.38)
+    w = int(ts.width(text) + 2 * pad_x)
+    h = int(ts.cap + 2 * pad_y)
+    m = 16
+    img = Image.new("RGBA", (w + 2 * m, h + 2 * m), (0, 0, 0, 0))
+    sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle((m, m + 5, m + w, m + h + 5), radius=16, fill=(0, 0, 0, 140))
+    img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(7)))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((m, m, m + w, m + h), radius=16, fill=fill)
+    ts.draw(d, img, m + pad_x, m + pad_y + ts.cap, text, text_fill)
+    out_png = Path(out_png)
+    img.save(out_png)
+    return out_png, img.width, img.height
+
+
 def render(out_png: Path, title: str, name: str, accent: str, layout: dict, subs: str | None = None) -> Path:
     """Draw the header for a 1080-wide frame; it is overlaid at (0, 0). Returns the PNG path."""
     accent = accent if re.fullmatch(r"#[0-9a-fA-F]{6}", accent or "") else "#FFD400"
